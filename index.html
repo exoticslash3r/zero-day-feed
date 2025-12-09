@@ -1,0 +1,3099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZeroDay Feed - TikTok-like Platform</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        :root {
+            --primary-red: #ff0033;
+            --dark-bg: #000000;
+            --card-bg: #121212;
+            --text-light: #ffffff;
+            --text-gray: #a0a0a0;
+            --border-color: #333333;
+            --category-bg: #1a1a1a;
+        }
+
+        body {
+            background-color: var(--dark-bg);
+            color: var(--text-light);
+            overflow-x: hidden;
+        }
+
+        /* Header with glowing red text */
+        header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            padding: 15px 20px;
+            z-index: 1000;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .glowing-red {
+            font-size: 28px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #ff0033;
+            text-shadow: 
+                0 0 10px #ff0033,
+                0 0 20px #ff0033,
+                0 0 40px #ff0033,
+                0 0 80px #ff0033;
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% {
+                text-shadow: 
+                    0 0 10px #ff0033,
+                    0 0 20px #ff0033,
+                    0 0 40px #ff0033;
+            }
+            100% {
+                text-shadow: 
+                    0 0 15px #ff0033,
+                    0 0 30px #ff0033,
+                    0 0 60px #ff0033,
+                    0 0 100px #ff0033;
+            }
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar-small {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--primary-red);
+            cursor: pointer;
+        }
+
+        .header-btn {
+            background-color: var(--primary-red);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .header-btn:hover {
+            background-color: #ff3355;
+            transform: scale(1.05);
+        }
+
+        .logout-btn {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Main content */
+        .main-container {
+            margin-top: 70px;
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 80px;
+            position: fixed;
+            height: calc(100vh - 70px);
+            background-color: var(--card-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+            z-index: 999;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px 0;
+            color: var(--text-gray);
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            padding: 10px 0;
+        }
+
+        .nav-item.active {
+            color: var(--primary-red);
+            border-left: 3px solid var(--primary-red);
+        }
+
+        .nav-item:hover {
+            color: var(--text-light);
+        }
+
+        .nav-item i {
+            font-size: 22px;
+            margin-bottom: 5px;
+        }
+
+        .nav-item span {
+            font-size: 12px;
+        }
+
+        /* Categories bar */
+        .categories-bar {
+            position: fixed;
+            top: 70px;
+            left: 80px;
+            right: 0;
+            background-color: var(--dark-bg);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            z-index: 998;
+            overflow-x: auto;
+            white-space: nowrap;
+            display: flex;
+            gap: 15px;
+        }
+
+        .category-btn {
+            background-color: var(--category-bg);
+            color: var(--text-light);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .category-btn.active {
+            background-color: var(--primary-red);
+            font-weight: 600;
+        }
+
+        .category-btn:hover {
+            background-color: #333;
+        }
+
+        /* Feed area */
+        .feed-container {
+            flex: 1;
+            margin-left: 80px;
+            margin-top: 60px;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: calc(100% - 80px);
+        }
+
+        /* Video post card */
+        .video-card {
+            width: 100%;
+            max-width: 500px;
+            height: 85vh;
+            position: relative;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        .media-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .video-player, .image-post {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            color: white;
+        }
+
+        .user-info-post {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 10px;
+            border: 2px solid var(--primary-red);
+            cursor: pointer;
+        }
+
+        .user-details h4 {
+            font-size: 16px;
+            margin-bottom: 3px;
+            cursor: pointer;
+        }
+
+        .user-details h4:hover {
+            text-decoration: underline;
+        }
+
+        .user-details p {
+            font-size: 14px;
+            color: var(--text-gray);
+        }
+
+        .video-caption {
+            font-size: 16px;
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+
+        .hashtags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .hashtag {
+            color: #4da6ff;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .hashtag:hover {
+            text-decoration: underline;
+        }
+
+        .video-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-item i {
+            font-size: 24px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .stat-item i:hover {
+            transform: scale(1.2);
+        }
+
+        .like-btn:hover {
+            color: #ff0033;
+        }
+
+        .comment-btn:hover {
+            color: #1e90ff;
+        }
+
+        .share-btn:hover {
+            color: #00cc66;
+        }
+
+        /* Right sidebar - actions */
+        .actions-sidebar {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .action-btn i {
+            font-size: 24px;
+            margin-bottom: 5px;
+            background-color: rgba(0,0,0,0.5);
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        /* Upload modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            width: 90%;
+            max-width: 500px;
+            border-radius: 10px;
+            padding: 30px;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-gray);
+        }
+
+        .close-modal:hover {
+            color: white;
+        }
+
+        .modal h2 {
+            margin-bottom: 20px;
+            color: var(--primary-red);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-light);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            background-color: #222;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            color: white;
+            font-size: 16px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-red);
+        }
+
+        textarea.form-control {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .upload-btn {
+            background-color: var(--primary-red);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .upload-btn:hover {
+            background-color: #ff3355;
+        }
+
+        /* Media preview */
+        .media-preview {
+            width: 100%;
+            margin-top: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            max-height: 200px;
+            object-fit: contain;
+            background-color: #000;
+        }
+
+        /* Auth forms */
+        .auth-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .auth-box {
+            background-color: var(--card-bg);
+            width: 90%;
+            max-width: 400px;
+            border-radius: 10px;
+            padding: 30px;
+            position: relative;
+        }
+
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 25px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .auth-tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+            color: var(--text-gray);
+            font-weight: 600;
+        }
+
+        .auth-tab.active {
+            color: var(--primary-red);
+            border-bottom: 2px solid var(--primary-red);
+        }
+
+        .auth-form {
+            display: none;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        /* Loading spinner */
+        .loader {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 3000;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(255, 0, 51, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-red);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Profile section */
+        .profile-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            display: none;
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 30px;
+            border: 3px solid var(--primary-red);
+            cursor: pointer;
+        }
+
+        .profile-info h2 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .profile-info p {
+            color: var(--text-gray);
+            margin-bottom: 15px;
+            max-width: 400px;
+        }
+
+        .profile-stats {
+            display: flex;
+            gap: 30px;
+        }
+
+        .profile-stat {
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .profile-stat .count {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary-red);
+        }
+
+        .profile-stat .label {
+            font-size: 14px;
+            color: var(--text-gray);
+        }
+
+        .edit-profile-btn {
+            background-color: transparent;
+            border: 1px solid var(--primary-red);
+            color: var(--primary-red);
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        /* Explore page */
+        .explore-container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            display: none;
+        }
+
+        .explore-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .explore-card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .explore-card:hover {
+            transform: scale(1.03);
+        }
+
+        .explore-card video,
+        .explore-card img {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+        }
+
+        .explore-card-info {
+            padding: 15px;
+        }
+
+        /* Messages page */
+        .messages-container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            display: none;
+        }
+
+        .messages-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .message-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .message-item:hover {
+            background-color: #1a1a1a;
+        }
+
+        .message-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 15px;
+        }
+
+        /* Settings page */
+        .settings-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            display: none;
+        }
+
+        .settings-section {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .settings-section h3 {
+            margin-bottom: 15px;
+            color: var(--primary-red);
+        }
+
+        .settings-option {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* Following page */
+        .following-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            display: none;
+        }
+
+        /* Notifications page */
+        .notifications-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            display: none;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-gray);
+        }
+
+        .empty-state i {
+            font-size: 60px;
+            margin-bottom: 20px;
+            color: var(--border-color);
+        }
+
+        .empty-state h3 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: var(--text-light);
+        }
+
+        /* Comments modal */
+        .comments-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+        }
+
+        .comments-header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comments-list {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .comment-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .comment-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .comment-content {
+            flex: 1;
+        }
+
+        .comment-author {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .comment-text {
+            color: var(--text-light);
+            margin-bottom: 5px;
+        }
+
+        .comment-time {
+            color: var(--text-gray);
+            font-size: 12px;
+        }
+
+        .comment-input-container {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        .comment-input {
+            flex: 1;
+            padding: 10px;
+            background-color: #222;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            color: white;
+        }
+
+        /* Edit Profile Modal */
+        .edit-profile-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .edit-profile-content {
+            background-color: var(--card-bg);
+            width: 90%;
+            max-width: 500px;
+            border-radius: 10px;
+            padding: 30px;
+            position: relative;
+        }
+
+        /* Media type indicators */
+        .media-type-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* Multi-image carousel */
+        .carousel-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .carousel-slide {
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        .carousel-slide.active {
+            display: block;
+        }
+
+        .carousel-slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .carousel-nav {
+            position: absolute;
+            top: 50%;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            transform: translateY(-50%);
+        }
+
+        .carousel-nav-btn {
+            background-color: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .carousel-dots {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .carousel-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: rgba(255,255,255,0.5);
+            cursor: pointer;
+        }
+
+        .carousel-dot.active {
+            background-color: var(--primary-red);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            
+            .categories-bar {
+                left: 0;
+            }
+            
+            .feed-container {
+                margin-left: 0;
+                width: 100%;
+            }
+            
+            .actions-sidebar {
+                right: 10px;
+            }
+            
+            .video-card {
+                height: 75vh;
+            }
+            
+            .profile-header {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .profile-avatar {
+                margin-right: 0;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="logo-container" id="homeLogo">
+            <i class="fas fa-biohazard" style="color: #ff0033; font-size: 28px;"></i>
+            <div class="glowing-red">ZeroDay Feed</div>
+        </div>
+        <div class="header-controls">
+            <div class="user-info" id="userInfoHeader" style="display: none;">
+                <img src="" alt="User" class="user-avatar-small" id="headerAvatar">
+                <span id="headerUserName"></span>
+                <button class="header-btn logout-btn" id="logoutBtn">Logout</button>
+            </div>
+            <button class="header-btn" id="uploadBtn">
+                <i class="fas fa-plus"></i> Upload
+            </button>
+            <button class="header-btn" id="authBtn">
+                <i class="fas fa-user"></i> Sign In
+            </button>
+        </div>
+    </header>
+
+    <!-- Categories Bar -->
+    <div class="categories-bar" id="categoriesBar">
+        <button class="category-btn active" data-category="all">All</button>
+        <button class="category-btn" data-category="tech">Tech</button>
+        <button class="category-btn" data-category="hacking">Hacking</button>
+        <button class="category-btn" data-category="coding">Coding</button>
+        <button class="category-btn" data-category="cybersecurity">Cyber Security</button>
+        <button class="category-btn" data-category="gaming">Gaming</button>
+        <button class="category-btn" data-category="music">Music</button>
+        <button class="category-btn" data-category="comedy">Comedy</button>
+        <button class="category-btn" data-category="education">Education</button>
+        <button class="category-btn" data-category="trending">Trending</button>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="nav-item active" id="homeNav" data-page="home">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </div>
+            <div class="nav-item" id="exploreNav" data-page="explore">
+                <i class="fas fa-compass"></i>
+                <span>Explore</span>
+            </div>
+            <div class="nav-item" id="followingNav" data-page="following">
+                <i class="fas fa-users"></i>
+                <span>Following</span>
+            </div>
+            <div class="nav-item" id="profileNav" data-page="profile">
+                <i class="fas fa-user"></i>
+                <span>Profile</span>
+            </div>
+            <div class="nav-item" id="messagesNav" data-page="messages">
+                <i class="fas fa-comment"></i>
+                <span>Messages</span>
+            </div>
+            <div class="nav-item" id="notificationsNav" data-page="notifications">
+                <i class="fas fa-bell"></i>
+                <span>Notifications</span>
+            </div>
+            <div class="nav-item" id="settingsNav" data-page="settings">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </div>
+        </div>
+
+        <!-- Home Page -->
+        <div class="feed-container" id="homePage">
+            <div class="loader" id="mainLoader">
+                <div class="spinner"></div>
+            </div>
+            <div id="homeFeed">
+                <!-- Posts will be loaded here -->
+            </div>
+            <div class="empty-state" id="noPostsMessage" style="display: none;">
+                <i class="fas fa-video-slash"></i>
+                <h3>No posts yet</h3>
+                <p>No one has posted on ZeroDay Feed yet. Be the first!</p>
+                <button class="header-btn" id="firstUploadBtn" style="margin-top: 20px;">
+                    <i class="fas fa-plus"></i> Upload First Video
+                </button>
+            </div>
+        </div>
+
+        <!-- Explore Page -->
+        <div class="explore-container" id="explorePage">
+            <h2>Explore ZeroDay Content</h2>
+            <div class="explore-grid" id="exploreGrid">
+                <!-- Explore content will be loaded here -->
+            </div>
+            <div class="empty-state" id="noExplorePosts" style="display: none;">
+                <i class="fas fa-compass"></i>
+                <h3>No content to explore yet</h3>
+                <p>Upload videos or images to see them here!</p>
+            </div>
+        </div>
+
+        <!-- Following Page -->
+        <div class="following-container" id="followingPage">
+            <h2>Following</h2>
+            <div class="empty-state" id="followingEmpty">
+                <i class="fas fa-users"></i>
+                <h3>No users followed yet</h3>
+                <p>Follow some users to see their posts here!</p>
+            </div>
+            <div id="followingFeed" style="display: none;">
+                <!-- Following posts will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Profile Page -->
+        <div class="profile-container" id="profilePage">
+            <div class="profile-header">
+                <img src="" alt="Profile" class="profile-avatar" id="profileAvatar">
+                <div class="profile-info">
+                    <h2 id="profileName">Loading...</h2>
+                    <p id="profileBio">Loading...</p>
+                    <div class="profile-stats">
+                        <div class="profile-stat" onclick="showFollowers()">
+                            <div class="count" id="postCount">0</div>
+                            <div class="label">Posts</div>
+                        </div>
+                        <div class="profile-stat" onclick="showFollowers()">
+                            <div class="count" id="followerCount">0</div>
+                            <div class="label">Followers</div>
+                        </div>
+                        <div class="profile-stat" onclick="showFollowing()">
+                            <div class="count" id="followingCount">0</div>
+                            <div class="label">Following</div>
+                        </div>
+                    </div>
+                    <button class="edit-profile-btn" id="editProfileBtn">Edit Profile</button>
+                </div>
+            </div>
+            <div id="userPosts">
+                <!-- User's posts will be loaded here -->
+            </div>
+            <div class="empty-state" id="noUserPosts" style="display: none;">
+                <i class="fas fa-video-slash"></i>
+                <h3>No posts yet</h3>
+                <p>Upload your first video or image to get started!</p>
+            </div>
+        </div>
+
+        <!-- Messages Page -->
+        <div class="messages-container" id="messagesPage">
+            <h2>Messages</h2>
+            <div class="empty-state" id="noMessages">
+                <i class="fas fa-comments"></i>
+                <h3>No messages yet</h3>
+                <p>Start conversations with other ZeroDay users!</p>
+            </div>
+            <div class="messages-list" id="messagesList" style="display: none;">
+                <!-- Messages will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Notifications Page -->
+        <div class="notifications-container" id="notificationsPage">
+            <h2>Notifications</h2>
+            <div class="empty-state" id="noNotifications">
+                <i class="fas fa-bell"></i>
+                <h3>No notifications yet</h3>
+                <p>You'll see notifications here when you get likes, comments, or new followers!</p>
+            </div>
+            <div class="messages-list" id="notificationsList" style="display: none;">
+                <!-- Notifications will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div class="settings-container" id="settingsPage">
+            <h2>Settings</h2>
+            <div class="settings-section">
+                <h3>Account Settings</h3>
+                <div class="settings-option">
+                    <span>Change Username</span>
+                    <button class="header-btn" id="changeUsernameBtn" style="padding: 5px 10px;">Change</button>
+                </div>
+                <div class="settings-option">
+                    <span>Change Email</span>
+                    <button class="header-btn" id="changeEmailBtn" style="padding: 5px 10px;">Change</button>
+                </div>
+                <div class="settings-option">
+                    <span>Change Password</span>
+                    <button class="header-btn" id="changePasswordBtn" style="padding: 5px 10px;">Change</button>
+                </div>
+                <div class="settings-option">
+                    <span>Change Bio</span>
+                    <button class="header-btn" id="changeBioBtn" style="padding: 5px 10px;">Change</button>
+                </div>
+                <div class="settings-option">
+                    <span>Change Profile Picture</span>
+                    <button class="header-btn" id="changeProfilePicBtn" style="padding: 5px 10px;">Change</button>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Privacy Settings</h3>
+                <div class="settings-option">
+                    <span>Private Account</span>
+                    <input type="checkbox" id="privateAccount">
+                </div>
+                <div class="settings-option">
+                    <span>Show Activity Status</span>
+                    <input type="checkbox" id="activityStatus" checked>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Appearance</h3>
+                <div class="settings-option">
+                    <span>Dark Mode</span>
+                    <input type="checkbox" id="darkMode" checked disabled>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Danger Zone</h3>
+                <div class="settings-option">
+                    <span style="color: #ff0033;">Delete Account</span>
+                    <button class="header-btn" id="deleteAccountBtn" style="padding: 5px 10px; background-color: #ff0033;">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right sidebar actions -->
+        <div class="actions-sidebar" id="actionSidebar">
+            <div class="action-btn" onclick="likeCurrentPost()">
+                <i class="fas fa-heart"></i>
+                <span>Like</span>
+            </div>
+            <div class="action-btn" onclick="commentOnPost()">
+                <i class="fas fa-comment"></i>
+                <span>Comment</span>
+            </div>
+            <div class="action-btn" onclick="sharePost()">
+                <i class="fas fa-share"></i>
+                <span>Share</span>
+            </div>
+            <div class="action-btn" onclick="toggleSound()">
+                <i class="fas fa-volume-up" id="soundIcon"></i>
+                <span>Sound</span>
+            </div>
+            <div class="action-btn" onclick="followUser()">
+                <i class="fas fa-user-plus" id="followIcon"></i>
+                <span>Follow</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="modal" id="uploadModal">
+        <div class="modal-content">
+            <span class="close-modal" id="closeUpload">&times;</span>
+            <h2><i class="fas fa-upload"></i> Upload to ZeroDay Feed</h2>
+            <form id="uploadForm">
+                <div class="form-group">
+                    <label for="mediaType">Media Type</label>
+                    <select class="form-control" id="mediaType">
+                        <option value="video">Video</option>
+                        <option value="image">Image</option>
+                        <option value="multiple-images">Multiple Images (Carousel)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="mediaCaption">Caption</label>
+                    <textarea class="form-control" id="mediaCaption" placeholder="What's happening?"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="mediaHashtags">Hashtags (comma separated)</label>
+                    <input type="text" class="form-control" id="mediaHashtags" placeholder="#zeroday, #hacking, #tech">
+                </div>
+                <div class="form-group">
+                    <label for="mediaCategory">Category</label>
+                    <select class="form-control" id="mediaCategory">
+                        <option value="tech">Tech</option>
+                        <option value="hacking">Hacking</option>
+                        <option value="coding">Coding</option>
+                        <option value="cybersecurity">Cyber Security</option>
+                        <option value="gaming">Gaming</option>
+                        <option value="music">Music</option>
+                        <option value="comedy">Comedy</option>
+                        <option value="education">Education</option>
+                        <option value="trending">Trending</option>
+                    </select>
+                </div>
+                
+                <!-- Single file upload -->
+                <div class="form-group" id="singleFileUpload">
+                    <label for="mediaFile">File</label>
+                    <input type="file" class="form-control" id="mediaFile" accept="video/*,image/*">
+                    <img id="mediaPreview" class="media-preview" style="display: none;">
+                    <video id="videoPreview" class="media-preview" style="display: none;" controls></video>
+                </div>
+                
+                <!-- Multiple file upload -->
+                <div class="form-group" id="multipleFilesUpload" style="display: none;">
+                    <label for="mediaFiles">Select Images (Multiple)</label>
+                    <input type="file" class="form-control" id="mediaFiles" accept="image/*" multiple>
+                    <div id="multipleFilesPreview" style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;"></div>
+                </div>
+                
+                <button type="submit" class="upload-btn" id="submitUpload">
+                    <i class="fas fa-cloud-upload-alt"></i> Upload Media
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div class="auth-container" id="authContainer">
+        <div class="auth-box">
+            <div class="auth-tabs">
+                <div class="auth-tab active" id="loginTab">Login</div>
+                <div class="auth-tab" id="signupTab">Sign Up</div>
+            </div>
+            
+            <div class="auth-form active" id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" class="form-control" id="loginEmail" placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" class="form-control" id="loginPassword" placeholder="Enter your password">
+                </div>
+                <button class="upload-btn" id="loginBtn">Login</button>
+                <div style="text-align: center; margin-top: 15px;">
+                    <button type="button" class="header-btn" id="googleLoginBtn" style="width: 100%; background-color: #4285F4;">
+                        <i class="fab fa-google"></i> Sign in with Google
+                    </button>
+                </div>
+            </div>
+            
+            <div class="auth-form" id="signupForm">
+                <div class="form-group">
+                    <label for="signupUsername">Username</label>
+                    <input type="text" class="form-control" id="signupUsername" placeholder="Choose a unique username">
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Email</label>
+                    <input type="email" class="form-control" id="signupEmail" placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <input type="password" class="form-control" id="signupPassword" placeholder="Create a password (min 6 chars)">
+                </div>
+                <div class="form-group">
+                    <label for="signupBio">Bio (Optional)</label>
+                    <textarea class="form-control" id="signupBio" placeholder="Tell us about yourself"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="signupProfilePic">Profile Picture (Optional)</label>
+                    <input type="file" class="form-control" id="signupProfilePic" accept="image/*">
+                    <img id="profilePicPreview" class="media-preview" style="display: none; max-height: 150px;">
+                </div>
+                <button class="upload-btn" id="signupBtn">Create Account</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Comments Modal -->
+    <div class="comments-modal" id="commentsModal">
+        <div class="comments-header">
+            <h3>Comments</h3>
+            <span class="close-modal" id="closeComments">&times;</span>
+        </div>
+        <div class="comments-list" id="commentsList">
+            <!-- Comments will be loaded here -->
+        </div>
+        <div class="comment-input-container">
+            <input type="text" class="comment-input" id="commentInput" placeholder="Add a comment...">
+            <button class="header-btn" id="submitComment">Post</button>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div class="edit-profile-modal" id="editProfileModal">
+        <div class="edit-profile-content">
+            <span class="close-modal" id="closeEditProfile">&times;</span>
+            <h2><i class="fas fa-user-edit"></i> Edit Profile</h2>
+            <form id="editProfileForm">
+                <div class="form-group">
+                    <label for="editUsername">Username</label>
+                    <input type="text" class="form-control" id="editUsername" placeholder="Username">
+                </div>
+                <div class="form-group">
+                    <label for="editBio">Bio</label>
+                    <textarea class="form-control" id="editBio" placeholder="Tell us about yourself"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editProfilePicture">Profile Picture</label>
+                    <input type="file" class="form-control" id="editProfilePicture" accept="image/*">
+                    <img id="editProfilePicPreview" class="media-preview" style="max-height: 150px;">
+                </div>
+                <button type="submit" class="upload-btn" id="saveProfileBtn">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDZYK8wRGXJNlGYNosolSo2zeEjLrqd4Eg",
+            authDomain: "pastebin-604ee.firebaseapp.com",
+            projectId: "pastebin-604ee",
+            storageBucket: "pastebin-604ee.firebasestorage.app",
+            messagingSenderId: "350469070664",
+            appId: "1:350469070664:web:c4a36875e2135cc5b31d7d",
+            measurementId: "G-22E9G4TK5R"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+
+        // DOM Elements
+        const homePage = document.getElementById('homePage');
+        const explorePage = document.getElementById('explorePage');
+        const followingPage = document.getElementById('followingPage');
+        const profilePage = document.getElementById('profilePage');
+        const messagesPage = document.getElementById('messagesPage');
+        const notificationsPage = document.getElementById('notificationsPage');
+        const settingsPage = document.getElementById('settingsPage');
+        
+        const uploadBtn = document.getElementById('uploadBtn');
+        const authBtn = document.getElementById('authBtn');
+        const uploadModal = document.getElementById('uploadModal');
+        const closeUpload = document.getElementById('closeUpload');
+        const authContainer = document.getElementById('authContainer');
+        const loginTab = document.getElementById('loginTab');
+        const signupTab = document.getElementById('signupTab');
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        const homeFeed = document.getElementById('homeFeed');
+        const uploadForm = document.getElementById('uploadForm');
+        const loginBtn = document.getElementById('loginBtn');
+        const signupBtn = document.getElementById('signupBtn');
+        const googleLoginBtn = document.getElementById('googleLoginBtn');
+        const mainLoader = document.getElementById('mainLoader');
+        const categoriesBar = document.getElementById('categoriesBar');
+        const categoryBtns = document.querySelectorAll('.category-btn');
+        const navItems = document.querySelectorAll('.nav-item');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const userInfoHeader = document.getElementById('userInfoHeader');
+        const headerAvatar = document.getElementById('headerAvatar');
+        const headerUserName = document.getElementById('headerUserName');
+        const exploreGrid = document.getElementById('exploreGrid');
+        const homeLogo = document.getElementById('homeLogo');
+        const firstUploadBtn = document.getElementById('firstUploadBtn');
+        const commentsModal = document.getElementById('commentsModal');
+        const closeComments = document.getElementById('closeComments');
+        const commentsList = document.getElementById('commentsList');
+        const commentInput = document.getElementById('commentInput');
+        const submitComment = document.getElementById('submitComment');
+        const editProfileBtn = document.getElementById('editProfileBtn');
+        const editProfileModal = document.getElementById('editProfileModal');
+        const closeEditProfile = document.getElementById('closeEditProfile');
+        const editProfileForm = document.getElementById('editProfileForm');
+        const saveProfileBtn = document.getElementById('saveProfileBtn');
+        const mediaTypeSelect = document.getElementById('mediaType');
+        const singleFileUpload = document.getElementById('singleFileUpload');
+        const multipleFilesUpload = document.getElementById('multipleFilesUpload');
+        const mediaFileInput = document.getElementById('mediaFile');
+        const mediaFilesInput = document.getElementById('mediaFiles');
+        const mediaPreview = document.getElementById('mediaPreview');
+        const videoPreview = document.getElementById('videoPreview');
+        const multipleFilesPreview = document.getElementById('multipleFilesPreview');
+        const signupProfilePicInput = document.getElementById('signupProfilePic');
+        const profilePicPreview = document.getElementById('profilePicPreview');
+        const editProfilePictureInput = document.getElementById('editProfilePicture');
+        const editProfilePicPreview = document.getElementById('editProfilePicPreview');
+
+        // App state
+        let currentUser = null;
+        let posts = [];
+        let currentCategory = 'all';
+        let currentPage = 'home';
+        let currentPostForComments = null;
+        let soundEnabled = true;
+        let currentPostIndex = 0;
+        let carouselSlides = [];
+        let carouselCurrentSlide = 0;
+
+        // Initialize the app
+        function initApp() {
+            showLoader();
+            
+            // Check auth state
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    currentUser = user;
+                    authBtn.style.display = 'none';
+                    userInfoHeader.style.display = 'flex';
+                    
+                    // Load user data
+                    loadUserData(user.uid).then(userData => {
+                        headerUserName.textContent = userData.username || user.displayName || user.email;
+                        headerAvatar.src = userData.profilePicture || user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || user.email)}&background=ff0033&color=fff`;
+                    });
+                    
+                    // Hide auth modal if user is logged in
+                    hideAuthModal();
+                } else {
+                    currentUser = null;
+                    authBtn.style.display = 'block';
+                    userInfoHeader.style.display = 'none';
+                    
+                    // Show auth modal if no user is logged in
+                    showAuthModal();
+                }
+                
+                // Load content based on current page
+                loadPageContent();
+                hideLoader();
+            });
+            
+            // Setup all event listeners
+            setupEventListeners();
+            
+            // Load initial content
+            loadPageContent();
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Navigation items
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const page = item.getAttribute('data-page');
+                    switchPage(page);
+                    
+                    // Update active nav
+                    navItems.forEach(nav => nav.classList.remove('active'));
+                    item.classList.add('active');
+                });
+            });
+            
+            // Category buttons
+            categoryBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const category = btn.getAttribute('data-category');
+                    switchCategory(category);
+                    
+                    // Update active category
+                    categoryBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                });
+            });
+            
+            // Home logo click
+            homeLogo.addEventListener('click', () => {
+                switchPage('home');
+                navItems.forEach(nav => nav.classList.remove('active'));
+                document.getElementById('homeNav').classList.add('active');
+            });
+            
+            // Upload button
+            uploadBtn.addEventListener('click', () => {
+                if (!currentUser) {
+                    showAuthModal();
+                    return;
+                }
+                uploadModal.style.display = 'flex';
+            });
+            
+            // First upload button
+            firstUploadBtn.addEventListener('click', () => {
+                if (!currentUser) {
+                    showAuthModal();
+                    return;
+                }
+                uploadModal.style.display = 'flex';
+            });
+            
+            // Close upload modal
+            closeUpload.addEventListener('click', () => {
+                uploadModal.style.display = 'none';
+            });
+            
+            // Close comments modal
+            closeComments.addEventListener('click', () => {
+                commentsModal.style.display = 'none';
+            });
+            
+            // Close edit profile modal
+            closeEditProfile.addEventListener('click', () => {
+                editProfileModal.style.display = 'none';
+            });
+            
+            // Auth button
+            authBtn.addEventListener('click', () => {
+                showAuthModal();
+            });
+            
+            // Logout button
+            logoutBtn.addEventListener('click', () => {
+                auth.signOut();
+            });
+            
+            // Auth tabs
+            loginTab.addEventListener('click', () => {
+                loginTab.classList.add('active');
+                signupTab.classList.remove('active');
+                loginForm.classList.add('active');
+                signupForm.classList.remove('active');
+            });
+            
+            signupTab.addEventListener('click', () => {
+                signupTab.classList.add('active');
+                loginTab.classList.remove('active');
+                signupForm.classList.add('active');
+                loginForm.classList.remove('active');
+            });
+            
+            // Media type change
+            mediaTypeSelect.addEventListener('change', () => {
+                const type = mediaTypeSelect.value;
+                if (type === 'multiple-images') {
+                    singleFileUpload.style.display = 'none';
+                    multipleFilesUpload.style.display = 'block';
+                } else {
+                    singleFileUpload.style.display = 'block';
+                    multipleFilesUpload.style.display = 'none';
+                }
+            });
+            
+            // Media file preview
+            mediaFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const fileType = file.type.split('/')[0];
+                
+                if (fileType === 'video') {
+                    mediaPreview.style.display = 'none';
+                    videoPreview.style.display = 'block';
+                    videoPreview.src = URL.createObjectURL(file);
+                } else if (fileType === 'image') {
+                    videoPreview.style.display = 'none';
+                    mediaPreview.style.display = 'block';
+                    mediaPreview.src = URL.createObjectURL(file);
+                }
+            });
+            
+            // Multiple files preview
+            mediaFilesInput.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                multipleFilesPreview.innerHTML = '';
+                
+                files.forEach((file, index) => {
+                    if (file.type.startsWith('image/')) {
+                        const img = document.createElement('img');
+                        img.src = URL.createObjectURL(file);
+                        img.style.width = '100px';
+                        img.style.height = '100px';
+                        img.style.objectFit = 'cover';
+                        img.style.borderRadius = '5px';
+                        multipleFilesPreview.appendChild(img);
+                    }
+                });
+                
+                multipleFilesPreview.style.display = 'flex';
+            });
+            
+            // Profile picture preview during signup
+            signupProfilePicInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    profilePicPreview.src = URL.createObjectURL(file);
+                    profilePicPreview.style.display = 'block';
+                }
+            });
+            
+            // Edit profile picture preview
+            editProfilePictureInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    editProfilePicPreview.src = URL.createObjectURL(file);
+                }
+            });
+            
+            // Edit profile button
+            editProfileBtn.addEventListener('click', () => {
+                editProfileModal.style.display = 'flex';
+                
+                // Load current data
+                db.collection('users').doc(currentUser.uid).get()
+                    .then(doc => {
+                        if (doc.exists) {
+                            const userData = doc.data();
+                            document.getElementById('editUsername').value = userData.username || '';
+                            document.getElementById('editBio').value = userData.bio || '';
+                            editProfilePicPreview.src = userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || currentUser.email)}&background=ff0033&color=fff`;
+                        }
+                    });
+            });
+            
+            // Save profile changes
+            editProfileForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const username = document.getElementById('editUsername').value.trim();
+                const bio = document.getElementById('editBio').value.trim();
+                const profilePicFile = editProfilePictureInput.files[0];
+                
+                if (!username) {
+                    alert('Username is required');
+                    return;
+                }
+                
+                showLoader();
+                
+                // Upload profile picture if changed
+                let uploadPromise = Promise.resolve(null);
+                if (profilePicFile) {
+                    const fileName = `profile_pictures/${currentUser.uid}_${Date.now()}_${profilePicFile.name}`;
+                    uploadPromise = storage.ref(fileName).put(profilePicFile)
+                        .then(snapshot => snapshot.ref.getDownloadURL());
+                }
+                
+                uploadPromise.then(profilePicUrl => {
+                    const updates = {
+                        username: username,
+                        bio: bio,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    
+                    if (profilePicUrl) {
+                        updates.profilePicture = profilePicUrl;
+                    }
+                    
+                    // Update user document
+                    return db.collection('users').doc(currentUser.uid).update(updates);
+                })
+                .then(() => {
+                    // Update Firebase auth profile
+                    const authUpdates = {
+                        displayName: username
+                    };
+                    
+                    if (profilePicFile) {
+                        return uploadPromise.then(url => {
+                            authUpdates.photoURL = url;
+                            return currentUser.updateProfile(authUpdates);
+                        });
+                    } else {
+                        return currentUser.updateProfile(authUpdates);
+                    }
+                })
+                .then(() => {
+                    // Update all user's posts with new username and avatar
+                    return db.collection('posts')
+                        .where('userId', '==', currentUser.uid)
+                        .get()
+                        .then(querySnapshot => {
+                            const batch = db.batch();
+                            querySnapshot.forEach(doc => {
+                                const postRef = db.collection('posts').doc(doc.id);
+                                batch.update(postRef, {
+                                    userName: username,
+                                    userAvatar: profilePicFile ? editProfilePicPreview.src : doc.data().userAvatar
+                                });
+                            });
+                            return batch.commit();
+                        });
+                })
+                .then(() => {
+                    editProfileModal.style.display = 'none';
+                    hideLoader();
+                    loadProfileData();
+                    alert('Profile updated successfully!');
+                })
+                .catch(error => {
+                    console.error('Error updating profile:', error);
+                    alert('Error updating profile: ' + error.message);
+                    hideLoader();
+                });
+            });
+            
+            // Login button
+            loginBtn.addEventListener('click', () => {
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                
+                if (!email || !password) {
+                    alert('Please enter email and password');
+                    return;
+                }
+                
+                showLoader();
+                auth.signInWithEmailAndPassword(email, password)
+                    .then(() => {
+                        hideAuthModal();
+                        hideLoader();
+                    })
+                    .catch((error) => {
+                        alert('Login error: ' + error.message);
+                        hideLoader();
+                    });
+            });
+            
+            // Sign up button
+            signupBtn.addEventListener('click', () => {
+                const username = document.getElementById('signupUsername').value.trim();
+                const email = document.getElementById('signupEmail').value.trim();
+                const password = document.getElementById('signupPassword').value;
+                const bio = document.getElementById('signupBio').value.trim();
+                const profilePicFile = signupProfilePicInput.files[0];
+                
+                if (!username || !email || !password) {
+                    alert('Please fill all required fields');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    alert('Password must be at least 6 characters');
+                    return;
+                }
+                
+                showLoader();
+                
+                // Check if username is taken
+                db.collection('users').where('username', '==', username).get()
+                    .then(snapshot => {
+                        if (!snapshot.empty) {
+                            throw new Error('Username already taken');
+                        }
+                        
+                        // Create user in Firebase Auth
+                        return auth.createUserWithEmailAndPassword(email, password);
+                    })
+                    .then((userCredential) => {
+                        const user = userCredential.user;
+                        
+                        // Upload profile picture if provided
+                        let uploadPromise = Promise.resolve(null);
+                        if (profilePicFile) {
+                            const fileName = `profile_pictures/${user.uid}_${Date.now()}_${profilePicFile.name}`;
+                            uploadPromise = storage.ref(fileName).put(profilePicFile)
+                                .then(snapshot => snapshot.ref.getDownloadURL());
+                        }
+                        
+                        return uploadPromise.then(profilePicUrl => {
+                            // Update Firebase auth profile
+                            const updates = {
+                                displayName: username
+                            };
+                            
+                            if (profilePicUrl) {
+                                updates.photoURL = profilePicUrl;
+                            }
+                            
+                            return user.updateProfile(updates).then(() => ({ user, profilePicUrl }));
+                        });
+                    })
+                    .then(({ user, profilePicUrl }) => {
+                        // Create user document in Firestore
+                        const userData = {
+                            uid: user.uid,
+                            username: username,
+                            email: email,
+                            bio: bio || 'Welcome to ZeroDay Feed!',
+                            profilePicture: profilePicUrl || null,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            followers: [],
+                            following: [],
+                            posts: 0,
+                            likes: []
+                        };
+                        
+                        return db.collection('users').doc(user.uid).set(userData);
+                    })
+                    .then(() => {
+                        hideAuthModal();
+                        hideLoader();
+                        alert('Account created successfully!');
+                    })
+                    .catch((error) => {
+                        alert('Sign up error: ' + error.message);
+                        hideLoader();
+                    });
+            });
+            
+            // Google login
+            googleLoginBtn.addEventListener('click', () => {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                showLoader();
+                auth.signInWithPopup(provider)
+                    .then((result) => {
+                        const user = result.user;
+                        
+                        // Check if user exists in Firestore
+                        return db.collection('users').doc(user.uid).get();
+                    })
+                    .then((doc) => {
+                        if (!doc.exists) {
+                            // Create user document if doesn't exist
+                            const username = currentUser.displayName || currentUser.email.split('@')[0];
+                            return db.collection('users').doc(currentUser.uid).set({
+                                uid: currentUser.uid,
+                                username: username,
+                                email: currentUser.email,
+                                profilePicture: currentUser.photoURL,
+                                bio: 'Welcome to ZeroDay Feed!',
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                                followers: [],
+                                following: [],
+                                posts: 0,
+                                likes: []
+                            });
+                        }
+                    })
+                    .then(() => {
+                        hideAuthModal();
+                        hideLoader();
+                    })
+                    .catch((error) => {
+                        alert('Google login error: ' + error.message);
+                        hideLoader();
+                    });
+            });
+            
+            // Upload form submission
+            uploadForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                if (!currentUser) {
+                    alert('Please sign in to upload');
+                    showAuthModal();
+                    return;
+                }
+                
+                const mediaType = mediaTypeSelect.value;
+                const caption = document.getElementById('mediaCaption').value.trim();
+                const hashtags = document.getElementById('mediaHashtags').value;
+                const category = document.getElementById('mediaCategory').value;
+                
+                if (!caption) {
+                    alert('Please add a caption');
+                    return;
+                }
+                
+                let files = [];
+                if (mediaType === 'multiple-images') {
+                    files = Array.from(mediaFilesInput.files);
+                    if (files.length === 0) {
+                        alert('Please select at least one image');
+                        return;
+                    }
+                    if (files.length > 10) {
+                        alert('Maximum 10 images allowed');
+                        return;
+                    }
+                } else {
+                    const file = mediaFileInput.files[0];
+                    if (!file) {
+                        alert('Please select a file');
+                        return;
+                    }
+                    files = [file];
+                }
+                
+                // Show loader
+                showLoader();
+                
+                // Upload files to Firebase Storage
+                const uploadPromises = files.map(file => {
+                    const fileType = mediaType === 'video' ? 'videos' : 'images';
+                    const fileName = `${fileType}/${currentUser.uid}_${Date.now()}_${file.name}`;
+                    
+                    return storage.ref(fileName).put(file)
+                        .then(snapshot => snapshot.ref.getDownloadURL());
+                });
+                
+                Promise.all(uploadPromises)
+                    .then(fileUrls => {
+                        // Get user data for post
+                        return loadUserData(currentUser.uid).then(userData => {
+                            // Create post in Firestore
+                            const postData = {
+                                userId: currentUser.uid,
+                                userName: userData.username || currentUser.displayName || 'User',
+                                userAvatar: userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || currentUser.email)}&background=ff0033&color=fff`,
+                                caption: caption,
+                                hashtags: hashtags.split(',').map(tag => tag.trim()).filter(tag => tag),
+                                category: category,
+                                mediaType: mediaType,
+                                mediaUrls: fileUrls,
+                                likes: [],
+                                comments: [],
+                                shares: 0,
+                                views: 0,
+                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                            };
+                            
+                            return db.collection('posts').add(postData);
+                        });
+                    })
+                    .then((docRef) => {
+                        // Update user's post count
+                        return db.collection('users').doc(currentUser.uid).update({
+                            posts: firebase.firestore.FieldValue.increment(1)
+                        });
+                    })
+                    .then(() => {
+                        // Success
+                        alert('Media uploaded successfully!');
+                        uploadModal.style.display = 'none';
+                        uploadForm.reset();
+                        mediaPreview.style.display = 'none';
+                        videoPreview.style.display = 'none';
+                        multipleFilesPreview.style.display = 'none';
+                        multipleFilesPreview.innerHTML = '';
+                        
+                        // Reload posts
+                        loadPageContent();
+                    })
+                    .catch((error) => {
+                        console.error('Error uploading media: ', error);
+                        alert('Error uploading media. Please try again.');
+                        hideLoader();
+                    });
+            });
+            
+            // Submit comment
+            submitComment.addEventListener('click', () => {
+                if (!currentUser) {
+                    showAuthModal();
+                    return;
+                }
+                
+                const commentText = commentInput.value.trim();
+                if (!commentText) {
+                    alert('Please enter a comment');
+                    return;
+                }
+                
+                if (!currentPostForComments) return;
+                
+                loadUserData(currentUser.uid).then(userData => {
+                    const commentData = {
+                        userId: currentUser.uid,
+                        userName: userData.username || currentUser.displayName || 'User',
+                        userAvatar: userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || currentUser.email)}&background=ff0033&color=fff`,
+                        text: commentText,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    
+                    // Add comment to post
+                    return db.collection('posts').doc(currentPostForComments.id).update({
+                        comments: firebase.firestore.FieldValue.arrayUnion(commentData)
+                    });
+                })
+                .then(() => {
+                    // Clear input
+                    commentInput.value = '';
+                    
+                    // Reload comments
+                    loadComments(currentPostForComments.id);
+                })
+                .catch((error) => {
+                    console.error('Error adding comment: ', error);
+                    alert('Error adding comment');
+                });
+            });
+            
+            // Enter key for comment
+            commentInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    submitComment.click();
+                }
+            });
+            
+            // Close modals when clicking outside
+            window.addEventListener('click', (e) => {
+                if (e.target === uploadModal) {
+                    uploadModal.style.display = 'none';
+                }
+                if (e.target === authContainer) {
+                    hideAuthModal();
+                }
+                if (e.target === commentsModal) {
+                    commentsModal.style.display = 'none';
+                }
+                if (e.target === editProfileModal) {
+                    editProfileModal.style.display = 'none';
+                }
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Space to pause/play video
+                if (e.code === 'Space' && currentPage === 'home') {
+                    e.preventDefault();
+                    const videos = document.querySelectorAll('.video-player');
+                    videos.forEach(video => {
+                        const rect = video.getBoundingClientRect();
+                        if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                            if (video.paused) {
+                                video.play();
+                            } else {
+                                video.pause();
+                            }
+                        }
+                    });
+                }
+                
+                // Arrow keys for carousel navigation
+                if (carouselSlides.length > 0) {
+                    if (e.key === 'ArrowLeft') {
+                        prevCarouselSlide();
+                    } else if (e.key === 'ArrowRight') {
+                        nextCarouselSlide();
+                    }
+                }
+            });
+        }
+
+        // Load user data
+        function loadUserData(userId) {
+            return db.collection('users').doc(userId).get()
+                .then(doc => {
+                    if (doc.exists) {
+                        return doc.data();
+                    } else {
+                        // Create default user data if doesn't exist
+                        const defaultData = {
+                            uid: userId,
+                            username: currentUser.displayName || currentUser.email.split('@')[0] || 'User',
+                            email: currentUser.email,
+                            bio: 'Welcome to ZeroDay Feed!',
+                            profilePicture: currentUser.photoURL || null,
+                            followers: [],
+                            following: [],
+                            posts: 0,
+                            likes: []
+                        };
+                        
+                        return db.collection('users').doc(userId).set(defaultData)
+                            .then(() => defaultData);
+                    }
+                });
+        }
+
+        // Show/hide loader
+        function showLoader() {
+            mainLoader.style.display = 'block';
+        }
+
+        function hideLoader() {
+            mainLoader.style.display = 'none';
+        }
+
+        // Show/hide auth modal
+        function showAuthModal() {
+            authContainer.style.display = 'flex';
+        }
+
+        function hideAuthModal() {
+            authContainer.style.display = 'none';
+        }
+
+        // Switch between pages
+        function switchPage(page) {
+            // Hide all pages
+            homePage.style.display = 'none';
+            explorePage.style.display = 'none';
+            followingPage.style.display = 'none';
+            profilePage.style.display = 'none';
+            messagesPage.style.display = 'none';
+            notificationsPage.style.display = 'none';
+            settingsPage.style.display = 'none';
+            
+            // Show current page
+            switch(page) {
+                case 'home':
+                    homePage.style.display = 'flex';
+                    categoriesBar.style.display = 'flex';
+                    loadHomePosts();
+                    break;
+                case 'explore':
+                    explorePage.style.display = 'block';
+                    categoriesBar.style.display = 'flex';
+                    loadExplorePosts();
+                    break;
+                case 'following':
+                    followingPage.style.display = 'block';
+                    categoriesBar.style.display = 'none';
+                    loadFollowingPosts();
+                    break;
+                case 'profile':
+                    profilePage.style.display = 'block';
+                    categoriesBar.style.display = 'none';
+                    loadProfileData();
+                    break;
+                case 'messages':
+                    messagesPage.style.display = 'block';
+                    categoriesBar.style.display = 'none';
+                    loadMessages();
+                    break;
+                case 'notifications':
+                    notificationsPage.style.display = 'block';
+                    categoriesBar.style.display = 'none';
+                    loadNotifications();
+                    break;
+                case 'settings':
+                    settingsPage.style.display = 'block';
+                    categoriesBar.style.display = 'none';
+                    break;
+            }
+            
+            currentPage = page;
+        }
+
+        // Switch category
+        function switchCategory(category) {
+            currentCategory = category;
+            loadPageContent();
+        }
+
+        // Load content for current page
+        function loadPageContent() {
+            switch(currentPage) {
+                case 'home':
+                    loadHomePosts();
+                    break;
+                case 'explore':
+                    loadExplorePosts();
+                    break;
+                case 'following':
+                    loadFollowingPosts();
+                    break;
+                case 'profile':
+                    loadProfileData();
+                    break;
+                case 'messages':
+                    loadMessages();
+                    break;
+                case 'notifications':
+                    loadNotifications();
+                    break;
+            }
+        }
+
+        // Load home posts
+        function loadHomePosts() {
+            showLoader();
+            homeFeed.innerHTML = '';
+            
+            let query = db.collection('posts')
+                .orderBy('timestamp', 'desc');
+            
+            // Filter by category if not "all"
+            if (currentCategory !== 'all') {
+                query = query.where('category', '==', currentCategory);
+            }
+            
+            query.limit(20)
+                .get()
+                .then((querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        document.getElementById('noPostsMessage').style.display = 'block';
+                        homeFeed.innerHTML = '';
+                        hideLoader();
+                        return;
+                    }
+                    
+                    document.getElementById('noPostsMessage').style.display = 'none';
+                    posts = [];
+                    
+                    querySnapshot.forEach((doc) => {
+                        const post = doc.data();
+                        post.id = doc.id;
+                        posts.push(post);
+                        createPostElement(post, homeFeed);
+                    });
+                    
+                    hideLoader();
+                    
+                    // Setup video autoplay
+                    setupVideoAutoplay();
+                })
+                .catch((error) => {
+                    console.error("Error loading posts: ", error);
+                    document.getElementById('noPostsMessage').style.display = 'block';
+                    homeFeed.innerHTML = '';
+                    hideLoader();
+                });
+        }
+
+        // Create post element for home feed
+        function createPostElement(post, container) {
+            const postElement = document.createElement('div');
+            postElement.className = 'video-card';
+            postElement.id = `post-${post.id}`;
+            
+            // Format date
+            const postDate = post.timestamp?.toDate ? post.timestamp.toDate() : new Date();
+            const dateString = formatDate(postDate);
+            
+            // Check if user liked this post
+            const isLiked = currentUser && post.likes && post.likes.includes(currentUser.uid);
+            
+            let mediaContent = '';
+            
+            if (post.mediaType === 'video') {
+                mediaContent = `
+                    <video class="video-player" loop muted playsinline>
+                        <source src="${post.mediaUrls[0]}" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                    <div class="media-type-badge">
+                        <i class="fas fa-video"></i> Video
+                    </div>
+                `;
+            } else if (post.mediaType === 'multiple-images') {
+                mediaContent = `
+                    <div class="carousel-container" id="carousel-${post.id}">
+                        ${post.mediaUrls.map((url, index) => `
+                            <div class="carousel-slide ${index === 0 ? 'active' : ''}">
+                                <img src="${url}" alt="Image ${index + 1}">
+                            </div>
+                        `).join('')}
+                        ${post.mediaUrls.length > 1 ? `
+                        <div class="carousel-nav">
+                            <button class="carousel-nav-btn" onclick="prevCarouselSlide('${post.id}')">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <button class="carousel-nav-btn" onclick="nextCarouselSlide('${post.id}')">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="carousel-dots">
+                            ${post.mediaUrls.map((_, index) => `
+                                <div class="carousel-dot ${index === 0 ? 'active' : ''}" onclick="goToCarouselSlide('${post.id}', ${index})"></div>
+                            `).join('')}
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="media-type-badge">
+                        <i class="fas fa-images"></i> ${post.mediaUrls.length} Photos
+                    </div>
+                `;
+            } else {
+                // Single image
+                mediaContent = `
+                    <img src="${post.mediaUrls[0]}" class="image-post" alt="Post image">
+                    <div class="media-type-badge">
+                        <i class="fas fa-image"></i> Photo
+                    </div>
+                `;
+            }
+            
+            postElement.innerHTML = `
+                <div class="media-container">
+                    ${mediaContent}
+                </div>
+                <div class="video-overlay">
+                    <div class="user-info-post">
+                        <img src="${post.userAvatar}" alt="${post.userName}" class="user-avatar" onclick="viewUserProfile('${post.userId}')">
+                        <div class="user-details">
+                            <h4 onclick="viewUserProfile('${post.userId}')">${post.userName}</h4>
+                            <p>${dateString}</p>
+                        </div>
+                    </div>
+                    <p class="video-caption">${post.caption}</p>
+                    ${post.hashtags && post.hashtags.length > 0 ? `
+                    <div class="hashtags">
+                        ${post.hashtags.map(tag => `<span class="hashtag">${tag}</span>`).join('')}
+                    </div>
+                    ` : ''}
+                    <div class="video-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-heart like-btn ${isLiked ? 'liked' : ''}" style="${isLiked ? 'color: #ff0033;' : ''}" onclick="likePost('${post.id}')"></i>
+                            <span class="stat-count">${post.likes ? post.likes.length : 0}</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-comment comment-btn" onclick="openComments('${post.id}')"></i>
+                            <span class="stat-count">${post.comments ? post.comments.length : 0}</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-share share-btn" onclick="sharePost('${post.id}')"></i>
+                            <span class="stat-count">${post.shares || 0}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(postElement);
+            
+            // Setup carousel if multiple images
+            if (post.mediaType === 'multiple-images') {
+                setupCarousel(post.id, post.mediaUrls.length);
+            }
+        }
+
+        // Setup carousel for multiple images
+        function setupCarousel(postId, totalSlides) {
+            const carouselContainer = document.getElementById(`carousel-${postId}`);
+            if (!carouselContainer) return;
+            
+            // Add touch/swipe support
+            let startX = 0;
+            let endX = 0;
+            
+            carouselContainer.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+            });
+            
+            carouselContainer.addEventListener('touchend', (e) => {
+                endX = e.changedTouches[0].clientX;
+                handleCarouselSwipe(postId, startX, endX);
+            });
+            
+            // Mouse drag support
+            let mouseDown = false;
+            let mouseStartX = 0;
+            let mouseEndX = 0;
+            
+            carouselContainer.addEventListener('mousedown', (e) => {
+                mouseDown = true;
+                mouseStartX = e.clientX;
+            });
+            
+            carouselContainer.addEventListener('mouseup', (e) => {
+                if (mouseDown) {
+                    mouseDown = false;
+                    mouseEndX = e.clientX;
+                    handleCarouselSwipe(postId, mouseStartX, mouseEndX);
+                }
+            });
+            
+            carouselContainer.addEventListener('mouseleave', () => {
+                mouseDown = false;
+            });
+        }
+
+        // Handle carousel swipe
+        function handleCarouselSwipe(postId, startX, endX) {
+            const threshold = 50; // Minimum swipe distance
+            const diff = startX - endX;
+            
+            if (Math.abs(diff) > threshold) {
+                if (diff > 0) {
+                    // Swipe left - next slide
+                    nextCarouselSlide(postId);
+                } else {
+                    // Swipe right - previous slide
+                    prevCarouselSlide(postId);
+                }
+            }
+        }
+
+        // Carousel navigation functions
+        window.nextCarouselSlide = function(postId) {
+            const carouselContainer = document.getElementById(`carousel-${postId}`);
+            if (!carouselContainer) return;
+            
+            const slides = carouselContainer.querySelectorAll('.carousel-slide');
+            const dots = carouselContainer.querySelectorAll('.carousel-dot');
+            let currentIndex = 0;
+            
+            // Find current slide
+            slides.forEach((slide, index) => {
+                if (slide.classList.contains('active')) {
+                    currentIndex = index;
+                }
+            });
+            
+            // Calculate next index
+            const nextIndex = (currentIndex + 1) % slides.length;
+            
+            // Update slides
+            slides[currentIndex].classList.remove('active');
+            slides[nextIndex].classList.add('active');
+            
+            // Update dots
+            dots[currentIndex].classList.remove('active');
+            dots[nextIndex].classList.add('active');
+        };
+
+        window.prevCarouselSlide = function(postId) {
+            const carouselContainer = document.getElementById(`carousel-${postId}`);
+            if (!carouselContainer) return;
+            
+            const slides = carouselContainer.querySelectorAll('.carousel-slide');
+            const dots = carouselContainer.querySelectorAll('.carousel-dot');
+            let currentIndex = 0;
+            
+            // Find current slide
+            slides.forEach((slide, index) => {
+                if (slide.classList.contains('active')) {
+                    currentIndex = index;
+                }
+            });
+            
+            // Calculate previous index
+            const prevIndex = (currentIndex - 1 + slides.length) % slides.length;
+            
+            // Update slides
+            slides[currentIndex].classList.remove('active');
+            slides[prevIndex].classList.add('active');
+            
+            // Update dots
+            dots[currentIndex].classList.remove('active');
+            dots[prevIndex].classList.add('active');
+        };
+
+        window.goToCarouselSlide = function(postId, slideIndex) {
+            const carouselContainer = document.getElementById(`carousel-${postId}`);
+            if (!carouselContainer) return;
+            
+            const slides = carouselContainer.querySelectorAll('.carousel-slide');
+            const dots = carouselContainer.querySelectorAll('.carousel-dot');
+            
+            // Remove active from all slides and dots
+            slides.forEach(slide => slide.classList.remove('active'));
+            dots.forEach(dot => dot.classList.remove('active'));
+            
+            // Add active to selected slide and dot
+            slides[slideIndex].classList.add('active');
+            dots[slideIndex].classList.add('active');
+        };
+
+        // Load explore posts
+        function loadExplorePosts() {
+            showLoader();
+            exploreGrid.innerHTML = '';
+            
+            db.collection('posts')
+                .orderBy('timestamp', 'desc')
+                .limit(30)
+                .get()
+                .then((querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        document.getElementById('noExplorePosts').style.display = 'block';
+                        exploreGrid.innerHTML = '';
+                        hideLoader();
+                        return;
+                    }
+                    
+                    document.getElementById('noExplorePosts').style.display = 'none';
+                    
+                    querySnapshot.forEach((doc) => {
+                        const post = doc.data();
+                        post.id = doc.id;
+                        createExplorePostElement(post);
+                    });
+                    
+                    hideLoader();
+                })
+                .catch((error) => {
+                    console.error("Error loading explore posts: ", error);
+                    document.getElementById('noExplorePosts').style.display = 'block';
+                    exploreGrid.innerHTML = '';
+                    hideLoader();
+                });
+        }
+
+        // Create explore post element
+        function createExplorePostElement(post) {
+            const postElement = document.createElement('div');
+            postElement.className = 'explore-card';
+            postElement.id = `explore-${post.id}`;
+            
+            let mediaContent = '';
+            if (post.mediaType === 'video') {
+                mediaContent = `<video loop muted playsinline><source src="${post.mediaUrls[0]}" type="video/mp4"></video>`;
+            } else {
+                mediaContent = `<img src="${post.mediaUrls[0]}" alt="Post image">`;
+            }
+            
+            postElement.innerHTML = `
+                ${mediaContent}
+                <div class="explore-card-info">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <img src="${post.userAvatar}" alt="${post.userName}" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 10px;">
+                        <span style="font-weight: bold;">${post.userName}</span>
+                    </div>
+                    <p style="font-size: 14px; margin-bottom: 5px;">${post.caption.length > 50 ? post.caption.substring(0, 50) + '...' : post.caption}</p>
+                    <div style="display: flex; gap: 15px; font-size: 12px; color: #aaa;">
+                        <span><i class="fas fa-heart"></i> ${post.likes ? post.likes.length : 0}</span>
+                        <span><i class="fas fa-comment"></i> ${post.comments ? post.comments.length : 0}</span>
+                        ${post.mediaType === 'multiple-images' ? '<span><i class="fas fa-images"></i> ' + post.mediaUrls.length + '</span>' : ''}
+                    </div>
+                </div>
+            `;
+            
+            exploreGrid.appendChild(postElement);
+            
+            // Click to view full post
+            postElement.addEventListener('click', () => {
+                switchPage('home');
+                // Scroll to post
+                setTimeout(() => {
+                    const postElem = document.getElementById(`post-${post.id}`);
+                    if (postElem) {
+                        postElem.scrollIntoView({ behavior: 'smooth' });
+                    }
+                }, 100);
+            });
+        }
+
+        // Load following posts
+        function loadFollowingPosts() {
+            if (!currentUser) {
+                document.getElementById('followingEmpty').style.display = 'block';
+                document.getElementById('followingFeed').style.display = 'none';
+                return;
+            }
+            
+            // For now, show empty state
+            document.getElementById('followingEmpty').style.display = 'block';
+            document.getElementById('followingFeed').style.display = 'none';
+        }
+
+        // Load profile data
+        function loadProfileData() {
+            if (!currentUser) {
+                showAuthModal();
+                return;
+            }
+            
+            showLoader();
+            
+            // Get user data
+            db.collection('users').doc(currentUser.uid).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        const userData = doc.data();
+                        document.getElementById('profileName').textContent = userData.username || 'User';
+                        document.getElementById('profileBio').textContent = userData.bio || 'Welcome to ZeroDay Feed!';
+                        document.getElementById('postCount').textContent = userData.posts || 0;
+                        document.getElementById('followerCount').textContent = userData.followers ? userData.followers.length : 0;
+                        document.getElementById('followingCount').textContent = userData.following ? userData.following.length : 0;
+                        
+                        // Set profile avatar
+                        const profileAvatar = document.getElementById('profileAvatar');
+                        profileAvatar.src = userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || 'User')}&background=ff0033&color=fff`;
+                    }
+                    
+                    // Load user posts
+                    return db.collection('posts')
+                        .where('userId', '==', currentUser.uid)
+                        .orderBy('timestamp', 'desc')
+                        .get();
+                })
+                .then((querySnapshot) => {
+                    const userPosts = document.getElementById('userPosts');
+                    userPosts.innerHTML = '';
+                    
+                    if (querySnapshot.empty) {
+                        document.getElementById('noUserPosts').style.display = 'block';
+                        hideLoader();
+                        return;
+                    }
+                    
+                    document.getElementById('noUserPosts').style.display = 'none';
+                    
+                    querySnapshot.forEach((doc) => {
+                        const post = doc.data();
+                        post.id = doc.id;
+                        createProfilePostElement(post, userPosts);
+                    });
+                    
+                    hideLoader();
+                })
+                .catch((error) => {
+                    console.error("Error loading profile: ", error);
+                    hideLoader();
+                });
+        }
+
+        // Create profile post element
+        function createProfilePostElement(post, container) {
+            const postElement = document.createElement('div');
+            postElement.className = 'video-card';
+            postElement.style.marginBottom = '30px';
+            postElement.id = `profile-post-${post.id}`;
+            
+            // Format date
+            const postDate = post.timestamp?.toDate ? post.timestamp.toDate() : new Date();
+            const dateString = formatDate(postDate);
+            
+            let mediaContent = '';
+            
+            if (post.mediaType === 'video') {
+                mediaContent = `
+                    <video class="video-player" loop muted playsinline>
+                        <source src="${post.mediaUrls[0]}" type="video/mp4">
+                    </video>
+                    <div class="media-type-badge">
+                        <i class="fas fa-video"></i> Video
+                    </div>
+                `;
+            } else if (post.mediaType === 'multiple-images') {
+                mediaContent = `
+                    <div class="carousel-container" id="profile-carousel-${post.id}">
+                        ${post.mediaUrls.map((url, index) => `
+                            <div class="carousel-slide ${index === 0 ? 'active' : ''}">
+                                <img src="${url}" alt="Image ${index + 1}">
+                            </div>
+                        `).join('')}
+                        ${post.mediaUrls.length > 1 ? `
+                        <div class="carousel-nav">
+                            <button class="carousel-nav-btn" onclick="prevCarouselSlide('profile-carousel-${post.id}')">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <button class="carousel-nav-btn" onclick="nextCarouselSlide('profile-carousel-${post.id}')">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="carousel-dots">
+                            ${post.mediaUrls.map((_, index) => `
+                                <div class="carousel-dot ${index === 0 ? 'active' : ''}" onclick="goToCarouselSlide('profile-carousel-${post.id}', ${index})"></div>
+                            `).join('')}
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="media-type-badge">
+                        <i class="fas fa-images"></i> ${post.mediaUrls.length} Photos
+                    </div>
+                `;
+            } else {
+                // Single image
+                mediaContent = `
+                    <img src="${post.mediaUrls[0]}" class="image-post" alt="Post image">
+                    <div class="media-type-badge">
+                        <i class="fas fa-image"></i> Photo
+                    </div>
+                `;
+            }
+            
+            postElement.innerHTML = `
+                <div class="media-container">
+                    ${mediaContent}
+                </div>
+                <div class="video-overlay">
+                    <div class="user-info-post">
+                        <div class="user-details">
+                            <p>${dateString}</p>
+                        </div>
+                    </div>
+                    <p class="video-caption">${post.caption}</p>
+                    <div class="video-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-heart"></i>
+                            <span class="stat-count">${post.likes ? post.likes.length : 0}</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-comment"></i>
+                            <span class="stat-count">${post.comments ? post.comments.length : 0}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(postElement);
+            
+            // Setup carousel if multiple images
+            if (post.mediaType === 'multiple-images') {
+                setupCarousel(`profile-carousel-${post.id}`, post.mediaUrls.length);
+            }
+        }
+
+        // Load messages
+        function loadMessages() {
+            // For now, show empty state
+            document.getElementById('noMessages').style.display = 'block';
+            document.getElementById('messagesList').style.display = 'none';
+        }
+
+        // Load notifications
+        function loadNotifications() {
+            // For now, show empty state
+            document.getElementById('noNotifications').style.display = 'block';
+            document.getElementById('notificationsList').style.display = 'none';
+        }
+
+        // Setup video autoplay
+        function setupVideoAutoplay() {
+            const videos = document.querySelectorAll('.video-player');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    const video = entry.target;
+                    if (entry.isIntersecting) {
+                        video.play().catch(e => console.log("Autoplay prevented:", e));
+                    } else {
+                        video.pause();
+                    }
+                });
+            }, { threshold: 0.5 });
+            
+            videos.forEach(video => {
+                observer.observe(video);
+                
+                // Click to play/pause
+                video.parentElement.addEventListener('click', (e) => {
+                    if (e.target === video || e.target.closest('.video-overlay')) {
+                        if (video.paused) {
+                            video.play();
+                        } else {
+                            video.pause();
+                        }
+                    }
+                });
+            });
+        }
+
+        // Format date
+        function formatDate(date) {
+            const now = new Date();
+            const diff = now - date;
+            
+            // Less than a minute
+            if (diff < 60000) {
+                return 'Just now';
+            }
+            
+            // Less than an hour
+            if (diff < 3600000) {
+                const minutes = Math.floor(diff / 60000);
+                return `${minutes}m ago`;
+            }
+            
+            // Less than a day
+            if (diff < 86400000) {
+                const hours = Math.floor(diff / 3600000);
+                return `${hours}h ago`;
+            }
+            
+            // Less than a week
+            if (diff < 604800000) {
+                const days = Math.floor(diff / 86400000);
+                return `${days}d ago`;
+            }
+            
+            // Return full date
+            return date.toLocaleDateString();
+        }
+
+        // Like a post
+        function likePost(postId) {
+            if (!currentUser) {
+                showAuthModal();
+                return;
+            }
+            
+            const post = posts.find(p => p.id === postId);
+            if (!post) return;
+            
+            const likeBtn = document.querySelector(`#post-${postId} .like-btn`);
+            const likeCount = document.querySelector(`#post-${postId} .stat-count`);
+            
+            // Check if already liked
+            const isLiked = post.likes && post.likes.includes(currentUser.uid);
+            
+            // Update UI first for instant feedback
+            if (isLiked) {
+                // Unlike
+                likeBtn.style.color = '';
+                post.likes = post.likes.filter(id => id !== currentUser.uid);
+            } else {
+                // Like
+                likeBtn.style.color = '#ff0033';
+                if (!post.likes) post.likes = [];
+                post.likes.push(currentUser.uid);
+            }
+            
+            likeCount.textContent = post.likes ? post.likes.length : 0;
+            
+            // Update in database
+            db.collection('posts').doc(postId).update({
+                likes: post.likes || []
+            })
+            .catch((error) => {
+                console.error("Error updating likes: ", error);
+            });
+        }
+
+        // Like current post (for action sidebar)
+        function likeCurrentPost() {
+            // Find the post currently in view
+            const videoCards = document.querySelectorAll('.video-card');
+            for (let card of videoCards) {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    const postId = card.id.replace('post-', '');
+                    likePost(postId);
+                    break;
+                }
+            }
+        }
+
+        // Open comments
+        function openComments(postId) {
+            if (!currentUser) {
+                showAuthModal();
+                return;
+            }
+            
+            const post = posts.find(p => p.id === postId);
+            if (!post) return;
+            
+            currentPostForComments = post;
+            commentsModal.style.display = 'flex';
+            loadComments(postId);
+        }
+
+        // Comment on post (for action sidebar)
+        function commentOnPost() {
+            // Find the post currently in view
+            const videoCards = document.querySelectorAll('.video-card');
+            for (let card of videoCards) {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    const postId = card.id.replace('post-', '');
+                    openComments(postId);
+                    break;
+                }
+            }
+        }
+
+        // Load comments
+        function loadComments(postId) {
+            commentsList.innerHTML = '';
+            
+            db.collection('posts').doc(postId).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        const post = doc.data();
+                        const comments = post.comments || [];
+                        
+                        if (comments.length === 0) {
+                            commentsList.innerHTML = '<p style="text-align: center; color: #666; margin-top: 40px;">No comments yet. Be the first to comment!</p>';
+                            return;
+                        }
+                        
+                        // Sort comments by timestamp (newest first)
+                        comments.sort((a, b) => {
+                            const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date();
+                            const timeB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date();
+                            return timeB - timeA;
+                        });
+                        
+                        // Display comments
+                        comments.forEach(comment => {
+                            const commentDate = comment.timestamp?.toDate ? comment.timestamp.toDate() : new Date();
+                            const dateString = formatDate(commentDate);
+                            
+                            const commentElement = document.createElement('div');
+                            commentElement.className = 'comment-item';
+                            commentElement.innerHTML = `
+                                <img src="${comment.userAvatar}" alt="${comment.userName}" class="comment-avatar">
+                                <div class="comment-content">
+                                    <div class="comment-author">${comment.userName}</div>
+                                    <div class="comment-text">${comment.text}</div>
+                                    <div class="comment-time">${dateString}</div>
+                                </div>
+                            `;
+                            
+                            commentsList.appendChild(commentElement);
+                        });
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error loading comments: ", error);
+                });
+        }
+
+        // Share post
+        function sharePost(postId) {
+            if (!currentUser) {
+                showAuthModal();
+                return;
+            }
+            
+            const post = posts.find(p => p.id === postId);
+            if (!post) return;
+            
+            // Update share count
+            const newShares = (post.shares || 0) + 1;
+            
+            // Update in database
+            db.collection('posts').doc(postId).update({
+                shares: newShares
+            })
+            .then(() => {
+                // Update UI
+                const shareCount = document.querySelector(`#post-${postId} .stat-count`);
+                if (shareCount) {
+                    shareCount.textContent = newShares;
+                }
+                
+                // Create shareable link
+                const shareUrl = `${window.location.origin}?post=${postId}`;
+                
+                // Try to use Web Share API if available
+                if (navigator.share) {
+                    navigator.share({
+                        title: `Check out this post on ZeroDay Feed by ${post.userName}`,
+                        text: post.caption,
+                        url: shareUrl,
+                    });
+                } else {
+                    // Fallback to clipboard
+                    navigator.clipboard.writeText(shareUrl)
+                        .then(() => {
+                            alert('Link copied to clipboard!');
+                        })
+                        .catch(() => {
+                            // Last resort: show URL
+                            prompt('Copy this link to share:', shareUrl);
+                        });
+                }
+            })
+            .catch((error) => {
+                console.error("Error updating shares: ", error);
+            });
+        }
+
+        // Share current post (for action sidebar)
+        function shareCurrentPost() {
+            // Find the post currently in view
+            const videoCards = document.querySelectorAll('.video-card');
+            for (let card of videoCards) {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    const postId = card.id.replace('post-', '');
+                    sharePost(postId);
+                    break;
+                }
+            }
+        }
+
+        // Toggle sound
+        function toggleSound() {
+            const videos = document.querySelectorAll('.video-player');
+            const soundIcon = document.getElementById('soundIcon');
+            
+            soundEnabled = !soundEnabled;
+            
+            if (soundEnabled) {
+                soundIcon.className = 'fas fa-volume-up';
+            } else {
+                soundIcon.className = 'fas fa-volume-mute';
+            }
+            
+            videos.forEach(video => {
+                video.muted = !soundEnabled;
+            });
+        }
+
+        // Follow user
+        function followUser() {
+            // Find the post currently in view
+            const videoCards = document.querySelectorAll('.video-card');
+            for (let card of videoCards) {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    const postId = card.id.replace('post-', '');
+                    const post = posts.find(p => p.id === postId);
+                    if (post && post.userId !== currentUser.uid) {
+                        alert(`Follow feature coming soon! Would follow ${post.userName}`);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // View user profile
+        function viewUserProfile(userId) {
+            if (userId === currentUser?.uid) {
+                switchPage('profile');
+                navItems.forEach(nav => nav.classList.remove('active'));
+                document.getElementById('profileNav').classList.add('active');
+            } else {
+                // In a full app, this would load the user's profile
+                alert('Viewing other user profiles feature coming soon!');
+            }
+        }
+
+        // Show followers (placeholder)
+        function showFollowers() {
+            alert('Followers list feature coming soon!');
+        }
+
+        // Show following (placeholder)
+        function showFollowing() {
+            alert('Following list feature coming soon!');
+        }
+
+        // Initialize the app when page loads
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>

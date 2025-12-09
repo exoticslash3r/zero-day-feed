@@ -477,6 +477,29 @@
             background-color: #ff3355;
         }
 
+        .upload-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Upload progress */
+        .upload-progress {
+            width: 100%;
+            height: 20px;
+            background-color: #333;
+            border-radius: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            background-color: var(--primary-red);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
         /* Media preview */
         .media-preview {
             width: 100%;
@@ -1229,7 +1252,7 @@
                 <i class="fas fa-comment"></i>
                 <span>Comment</span>
             </div>
-            <div class="action-btn" onclick="sharePost()">
+            <div class="action-btn" onclick="shareCurrentPost()">
                 <i class="fas fa-share"></i>
                 <span>Share</span>
             </div>
@@ -1294,6 +1317,11 @@
                     <label for="mediaFiles">Select Images (Multiple)</label>
                     <input type="file" class="form-control" id="mediaFiles" accept="image/*" multiple>
                     <div id="multipleFilesPreview" style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;"></div>
+                </div>
+                
+                <!-- Upload progress -->
+                <div class="upload-progress" id="uploadProgress">
+                    <div class="upload-progress-bar" id="uploadProgressBar"></div>
                 </div>
                 
                 <button type="submit" class="upload-btn" id="submitUpload">
@@ -1409,10 +1437,15 @@
         };
 
         // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
+        const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
         const storage = firebase.storage();
+
+        // Enable Firestore persistence for offline support
+        db.enablePersistence().catch((err) => {
+            console.log("Firestore persistence failed: ", err);
+        });
 
         // DOM Elements
         const homePage = document.getElementById('homePage');
@@ -1470,39 +1503,57 @@
         const profilePicPreview = document.getElementById('profilePicPreview');
         const editProfilePictureInput = document.getElementById('editProfilePicture');
         const editProfilePicPreview = document.getElementById('editProfilePicPreview');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const uploadProgressBar = document.getElementById('uploadProgressBar');
+        const submitUploadBtn = document.getElementById('submitUpload');
 
         // App state
         let currentUser = null;
+        let currentUserData = null;
         let posts = [];
         let currentCategory = 'all';
         let currentPage = 'home';
         let currentPostForComments = null;
         let soundEnabled = true;
-        let currentPostIndex = 0;
-        let carouselSlides = [];
-        let carouselCurrentSlide = 0;
+        let isUploading = false;
 
         // Initialize the app
         function initApp() {
-            showLoader();
+            console.log("Initializing app...");
             
             // Check auth state
-            auth.onAuthStateChanged((user) => {
+            auth.onAuthStateChanged(async (user) => {
+                console.log("Auth state changed:", user ? "User logged in" : "No user");
                 if (user) {
                     currentUser = user;
                     authBtn.style.display = 'none';
                     userInfoHeader.style.display = 'flex';
                     
-                    // Load user data
-                    loadUserData(user.uid).then(userData => {
-                        headerUserName.textContent = userData.username || user.displayName || user.email;
-                        headerAvatar.src = userData.profilePicture || user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || user.email)}&background=ff0033&color=fff`;
-                    });
-                    
-                    // Hide auth modal if user is logged in
-                    hideAuthModal();
+                    try {
+                        // Load user data
+                        currentUserData = await loadUserData(user.uid);
+                        console.log("User data loaded:", currentUserData);
+                        
+                        if (currentUserData) {
+                            headerUserName.textContent = currentUserData.username || user.displayName || user.email;
+                            headerAvatar.src = currentUserData.profilePicture || user.photoURL || getDefaultAvatar(currentUserData.username || user.email);
+                        } else {
+                            // Create user data if it doesn't exist
+                            currentUserData = await createUserData(user);
+                            headerUserName.textContent = user.displayName || user.email || 'User';
+                            headerAvatar.src = user.photoURL || getDefaultAvatar(user.email);
+                        }
+                        
+                        // Hide auth modal if user is logged in
+                        hideAuthModal();
+                    } catch (error) {
+                        console.error("Error loading user data:", error);
+                        headerUserName.textContent = user.displayName || user.email || 'User';
+                        headerAvatar.src = user.photoURL || getDefaultAvatar(user.email);
+                    }
                 } else {
                     currentUser = null;
+                    currentUserData = null;
                     authBtn.style.display = 'block';
                     userInfoHeader.style.display = 'none';
                     
@@ -1520,6 +1571,52 @@
             
             // Load initial content
             loadPageContent();
+        }
+
+        // Get default avatar URL
+        function getDefaultAvatar(name) {
+            const encodedName = encodeURIComponent(name || 'User');
+            return `https://ui-avatars.com/api/?name=${encodedName}&background=ff0033&color=fff&size=150`;
+        }
+
+        // Load user data from Firestore
+        async function loadUserData(userId) {
+            try {
+                const doc = await db.collection('users').doc(userId).get();
+                if (doc.exists) {
+                    return doc.data();
+                }
+                return null;
+            } catch (error) {
+                console.error("Error loading user data:", error);
+                return null;
+            }
+        }
+
+        // Create user data in Firestore
+        async function createUserData(user) {
+            try {
+                const username = user.displayName || user.email.split('@')[0] || 'User';
+                const userData = {
+                    uid: user.uid,
+                    username: username,
+                    email: user.email,
+                    profilePicture: user.photoURL || null,
+                    bio: 'Welcome to ZeroDay Feed!',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    followers: [],
+                    following: [],
+                    posts: 0,
+                    likes: []
+                };
+                
+                await db.collection('users').doc(user.uid).set(userData);
+                return userData;
+            } catch (error) {
+                console.error("Error creating user data:", error);
+                return null;
+            }
         }
 
         // Setup event listeners
@@ -1576,6 +1673,7 @@
             // Close upload modal
             closeUpload.addEventListener('click', () => {
                 uploadModal.style.display = 'none';
+                resetUploadForm();
             });
             
             // Close comments modal
@@ -1596,6 +1694,7 @@
             // Logout button
             logoutBtn.addEventListener('click', () => {
                 auth.signOut();
+                alert("Logged out successfully!");
             });
             
             // Auth tabs
@@ -1635,11 +1734,15 @@
                 if (fileType === 'video') {
                     mediaPreview.style.display = 'none';
                     videoPreview.style.display = 'block';
-                    videoPreview.src = URL.createObjectURL(file);
+                    const url = URL.createObjectURL(file);
+                    videoPreview.src = url;
+                    videoPreview.onload = () => URL.revokeObjectURL(url);
                 } else if (fileType === 'image') {
                     videoPreview.style.display = 'none';
                     mediaPreview.style.display = 'block';
-                    mediaPreview.src = URL.createObjectURL(file);
+                    const url = URL.createObjectURL(file);
+                    mediaPreview.src = url;
+                    mediaPreview.onload = () => URL.revokeObjectURL(url);
                 }
             });
             
@@ -1651,11 +1754,13 @@
                 files.forEach((file, index) => {
                     if (file.type.startsWith('image/')) {
                         const img = document.createElement('img');
-                        img.src = URL.createObjectURL(file);
+                        const url = URL.createObjectURL(file);
+                        img.src = url;
                         img.style.width = '100px';
                         img.style.height = '100px';
                         img.style.objectFit = 'cover';
                         img.style.borderRadius = '5px';
+                        img.onload = () => URL.revokeObjectURL(url);
                         multipleFilesPreview.appendChild(img);
                     }
                 });
@@ -1667,8 +1772,10 @@
             signupProfilePicInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('image/')) {
-                    profilePicPreview.src = URL.createObjectURL(file);
+                    const url = URL.createObjectURL(file);
+                    profilePicPreview.src = url;
                     profilePicPreview.style.display = 'block';
+                    profilePicPreview.onload = () => URL.revokeObjectURL(url);
                 }
             });
             
@@ -1676,7 +1783,9 @@
             editProfilePictureInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('image/')) {
-                    editProfilePicPreview.src = URL.createObjectURL(file);
+                    const url = URL.createObjectURL(file);
+                    editProfilePicPreview.src = url;
+                    editProfilePicPreview.onload = () => URL.revokeObjectURL(url);
                 }
             });
             
@@ -1685,19 +1794,15 @@
                 editProfileModal.style.display = 'flex';
                 
                 // Load current data
-                db.collection('users').doc(currentUser.uid).get()
-                    .then(doc => {
-                        if (doc.exists) {
-                            const userData = doc.data();
-                            document.getElementById('editUsername').value = userData.username || '';
-                            document.getElementById('editBio').value = userData.bio || '';
-                            editProfilePicPreview.src = userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || currentUser.email)}&background=ff0033&color=fff`;
-                        }
-                    });
+                if (currentUserData) {
+                    document.getElementById('editUsername').value = currentUserData.username || '';
+                    document.getElementById('editBio').value = currentUserData.bio || '';
+                    editProfilePicPreview.src = currentUserData.profilePicture || currentUser.photoURL || getDefaultAvatar(currentUserData.username || currentUser.email);
+                }
             });
             
             // Save profile changes
-            editProfileForm.addEventListener('submit', (e) => {
+            editProfileForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 
                 const username = document.getElementById('editUsername').value.trim();
@@ -1711,15 +1816,17 @@
                 
                 showLoader();
                 
-                // Upload profile picture if changed
-                let uploadPromise = Promise.resolve(null);
-                if (profilePicFile) {
-                    const fileName = `profile_pictures/${currentUser.uid}_${Date.now()}_${profilePicFile.name}`;
-                    uploadPromise = storage.ref(fileName).put(profilePicFile)
-                        .then(snapshot => snapshot.ref.getDownloadURL());
-                }
-                
-                uploadPromise.then(profilePicUrl => {
+                try {
+                    let profilePicUrl = currentUserData?.profilePicture;
+                    
+                    // Upload profile picture if changed
+                    if (profilePicFile) {
+                        const fileName = `profile_pictures/${currentUser.uid}_${Date.now()}_${profilePicFile.name}`;
+                        const snapshot = await storage.ref(fileName).put(profilePicFile);
+                        profilePicUrl = await snapshot.ref.getDownloadURL();
+                    }
+                    
+                    // Update user document
                     const updates = {
                         username: username,
                         bio: bio,
@@ -1730,56 +1837,43 @@
                         updates.profilePicture = profilePicUrl;
                     }
                     
-                    // Update user document
-                    return db.collection('users').doc(currentUser.uid).update(updates);
-                })
-                .then(() => {
+                    await db.collection('users').doc(currentUser.uid).update(updates);
+                    
                     // Update Firebase auth profile
                     const authUpdates = {
                         displayName: username
                     };
                     
-                    if (profilePicFile) {
-                        return uploadPromise.then(url => {
-                            authUpdates.photoURL = url;
-                            return currentUser.updateProfile(authUpdates);
-                        });
-                    } else {
-                        return currentUser.updateProfile(authUpdates);
+                    if (profilePicUrl) {
+                        authUpdates.photoURL = profilePicUrl;
                     }
-                })
-                .then(() => {
-                    // Update all user's posts with new username and avatar
-                    return db.collection('posts')
-                        .where('userId', '==', currentUser.uid)
-                        .get()
-                        .then(querySnapshot => {
-                            const batch = db.batch();
-                            querySnapshot.forEach(doc => {
-                                const postRef = db.collection('posts').doc(doc.id);
-                                batch.update(postRef, {
-                                    userName: username,
-                                    userAvatar: profilePicFile ? editProfilePicPreview.src : doc.data().userAvatar
-                                });
-                            });
-                            return batch.commit();
-                        });
-                })
-                .then(() => {
+                    
+                    await currentUser.updateProfile(authUpdates);
+                    
+                    // Update current user data
+                    currentUserData = await loadUserData(currentUser.uid);
+                    
+                    // Update UI
+                    headerUserName.textContent = username;
+                    headerAvatar.src = profilePicUrl || getDefaultAvatar(username);
+                    
                     editProfileModal.style.display = 'none';
                     hideLoader();
-                    loadProfileData();
                     alert('Profile updated successfully!');
-                })
-                .catch(error => {
+                    
+                    // Reload profile page if currently viewing it
+                    if (currentPage === 'profile') {
+                        loadProfileData();
+                    }
+                } catch (error) {
                     console.error('Error updating profile:', error);
                     alert('Error updating profile: ' + error.message);
                     hideLoader();
-                });
+                }
             });
             
             // Login button
-            loginBtn.addEventListener('click', () => {
+            loginBtn.addEventListener('click', async () => {
                 const email = document.getElementById('loginEmail').value;
                 const password = document.getElementById('loginPassword').value;
                 
@@ -1789,19 +1883,18 @@
                 }
                 
                 showLoader();
-                auth.signInWithEmailAndPassword(email, password)
-                    .then(() => {
-                        hideAuthModal();
-                        hideLoader();
-                    })
-                    .catch((error) => {
-                        alert('Login error: ' + error.message);
-                        hideLoader();
-                    });
+                try {
+                    await auth.signInWithEmailAndPassword(email, password);
+                    hideAuthModal();
+                    hideLoader();
+                } catch (error) {
+                    alert('Login error: ' + error.message);
+                    hideLoader();
+                }
             });
             
             // Sign up button
-            signupBtn.addEventListener('click', () => {
+            signupBtn.addEventListener('click', async () => {
                 const username = document.getElementById('signupUsername').value.trim();
                 const email = document.getElementById('signupEmail').value.trim();
                 const password = document.getElementById('signupPassword').value;
@@ -1820,114 +1913,109 @@
                 
                 showLoader();
                 
-                // Check if username is taken
-                db.collection('users').where('username', '==', username).get()
-                    .then(snapshot => {
-                        if (!snapshot.empty) {
-                            throw new Error('Username already taken');
-                        }
-                        
-                        // Create user in Firebase Auth
-                        return auth.createUserWithEmailAndPassword(email, password);
-                    })
-                    .then((userCredential) => {
-                        const user = userCredential.user;
-                        
-                        // Upload profile picture if provided
-                        let uploadPromise = Promise.resolve(null);
-                        if (profilePicFile) {
-                            const fileName = `profile_pictures/${user.uid}_${Date.now()}_${profilePicFile.name}`;
-                            uploadPromise = storage.ref(fileName).put(profilePicFile)
-                                .then(snapshot => snapshot.ref.getDownloadURL());
-                        }
-                        
-                        return uploadPromise.then(profilePicUrl => {
-                            // Update Firebase auth profile
-                            const updates = {
-                                displayName: username
-                            };
-                            
-                            if (profilePicUrl) {
-                                updates.photoURL = profilePicUrl;
-                            }
-                            
-                            return user.updateProfile(updates).then(() => ({ user, profilePicUrl }));
-                        });
-                    })
-                    .then(({ user, profilePicUrl }) => {
-                        // Create user document in Firestore
+                try {
+                    // Check if username is taken
+                    const usernameQuery = await db.collection('users').where('username', '==', username).get();
+                    if (!usernameQuery.empty) {
+                        throw new Error('Username already taken');
+                    }
+                    
+                    // Create user in Firebase Auth
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    const user = userCredential.user;
+                    
+                    let profilePicUrl = null;
+                    
+                    // Upload profile picture if provided
+                    if (profilePicFile) {
+                        const fileName = `profile_pictures/${user.uid}_${Date.now()}_${profilePicFile.name}`;
+                        const snapshot = await storage.ref(fileName).put(profilePicFile);
+                        profilePicUrl = await snapshot.ref.getDownloadURL();
+                    }
+                    
+                    // Update Firebase auth profile
+                    await user.updateProfile({
+                        displayName: username,
+                        photoURL: profilePicUrl
+                    });
+                    
+                    // Create user document in Firestore
+                    const userData = {
+                        uid: user.uid,
+                        username: username,
+                        email: email,
+                        bio: bio || 'Welcome to ZeroDay Feed!',
+                        profilePicture: profilePicUrl,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        followers: [],
+                        following: [],
+                        posts: 0,
+                        likes: []
+                    };
+                    
+                    await db.collection('users').doc(user.uid).set(userData);
+                    
+                    hideAuthModal();
+                    hideLoader();
+                    alert('Account created successfully!');
+                } catch (error) {
+                    alert('Sign up error: ' + error.message);
+                    hideLoader();
+                }
+            });
+            
+            // Google login
+            googleLoginBtn.addEventListener('click', async () => {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                showLoader();
+                try {
+                    const result = await auth.signInWithPopup(provider);
+                    const user = result.user;
+                    
+                    // Check if user exists in Firestore
+                    const doc = await db.collection('users').doc(user.uid).get();
+                    
+                    if (!doc.exists) {
+                        // Create user document if doesn't exist
+                        const username = user.displayName || user.email.split('@')[0] || 'User';
                         const userData = {
                             uid: user.uid,
                             username: username,
-                            email: email,
-                            bio: bio || 'Welcome to ZeroDay Feed!',
-                            profilePicture: profilePicUrl || null,
+                            email: user.email,
+                            profilePicture: user.photoURL,
+                            bio: 'Welcome to ZeroDay Feed!',
                             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                             followers: [],
                             following: [],
                             posts: 0,
                             likes: []
                         };
                         
-                        return db.collection('users').doc(user.uid).set(userData);
-                    })
-                    .then(() => {
-                        hideAuthModal();
-                        hideLoader();
-                        alert('Account created successfully!');
-                    })
-                    .catch((error) => {
-                        alert('Sign up error: ' + error.message);
-                        hideLoader();
-                    });
-            });
-            
-            // Google login
-            googleLoginBtn.addEventListener('click', () => {
-                const provider = new firebase.auth.GoogleAuthProvider();
-                showLoader();
-                auth.signInWithPopup(provider)
-                    .then((result) => {
-                        const user = result.user;
-                        
-                        // Check if user exists in Firestore
-                        return db.collection('users').doc(user.uid).get();
-                    })
-                    .then((doc) => {
-                        if (!doc.exists) {
-                            // Create user document if doesn't exist
-                            const username = currentUser.displayName || currentUser.email.split('@')[0];
-                            return db.collection('users').doc(currentUser.uid).set({
-                                uid: currentUser.uid,
-                                username: username,
-                                email: currentUser.email,
-                                profilePicture: currentUser.photoURL,
-                                bio: 'Welcome to ZeroDay Feed!',
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                                followers: [],
-                                following: [],
-                                posts: 0,
-                                likes: []
-                            });
-                        }
-                    })
-                    .then(() => {
-                        hideAuthModal();
-                        hideLoader();
-                    })
-                    .catch((error) => {
-                        alert('Google login error: ' + error.message);
-                        hideLoader();
-                    });
+                        await db.collection('users').doc(user.uid).set(userData);
+                    }
+                    
+                    hideAuthModal();
+                    hideLoader();
+                } catch (error) {
+                    alert('Google login error: ' + error.message);
+                    hideLoader();
+                }
             });
             
             // Upload form submission
-            uploadForm.addEventListener('submit', (e) => {
+            uploadForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 
                 if (!currentUser) {
                     alert('Please sign in to upload');
                     showAuthModal();
+                    return;
+                }
+                
+                if (isUploading) {
+                    alert('Please wait for current upload to complete');
                     return;
                 }
                 
@@ -1961,70 +2049,102 @@
                     files = [file];
                 }
                 
-                // Show loader
-                showLoader();
+                // Start upload
+                isUploading = true;
+                submitUploadBtn.disabled = true;
+                submitUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+                uploadProgress.style.display = 'block';
+                uploadProgressBar.style.width = '0%';
                 
-                // Upload files to Firebase Storage
-                const uploadPromises = files.map(file => {
-                    const fileType = mediaType === 'video' ? 'videos' : 'images';
-                    const fileName = `${fileType}/${currentUser.uid}_${Date.now()}_${file.name}`;
+                try {
+                    // Upload files to Firebase Storage
+                    const fileUrls = [];
+                    let totalUploaded = 0;
                     
-                    return storage.ref(fileName).put(file)
-                        .then(snapshot => snapshot.ref.getDownloadURL());
-                });
-                
-                Promise.all(uploadPromises)
-                    .then(fileUrls => {
-                        // Get user data for post
-                        return loadUserData(currentUser.uid).then(userData => {
-                            // Create post in Firestore
-                            const postData = {
-                                userId: currentUser.uid,
-                                userName: userData.username || currentUser.displayName || 'User',
-                                userAvatar: userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || currentUser.email)}&background=ff0033&color=fff`,
-                                caption: caption,
-                                hashtags: hashtags.split(',').map(tag => tag.trim()).filter(tag => tag),
-                                category: category,
-                                mediaType: mediaType,
-                                mediaUrls: fileUrls,
-                                likes: [],
-                                comments: [],
-                                shares: 0,
-                                views: 0,
-                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                            };
-                            
-                            return db.collection('posts').add(postData);
-                        });
-                    })
-                    .then((docRef) => {
-                        // Update user's post count
-                        return db.collection('users').doc(currentUser.uid).update({
-                            posts: firebase.firestore.FieldValue.increment(1)
-                        });
-                    })
-                    .then(() => {
-                        // Success
-                        alert('Media uploaded successfully!');
-                        uploadModal.style.display = 'none';
-                        uploadForm.reset();
-                        mediaPreview.style.display = 'none';
-                        videoPreview.style.display = 'none';
-                        multipleFilesPreview.style.display = 'none';
-                        multipleFilesPreview.innerHTML = '';
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        const fileType = mediaType === 'video' ? 'videos' : 'images';
+                        const fileName = `${fileType}/${currentUser.uid}_${Date.now()}_${i}_${file.name}`;
                         
-                        // Reload posts
-                        loadPageContent();
-                    })
-                    .catch((error) => {
-                        console.error('Error uploading media: ', error);
-                        alert('Error uploading media. Please try again.');
-                        hideLoader();
+                        // Create upload task
+                        const uploadTask = storage.ref(fileName).put(file);
+                        
+                        // Wait for upload to complete
+                        const snapshot = await new Promise((resolve, reject) => {
+                            uploadTask.on('state_changed',
+                                (snapshot) => {
+                                    // Calculate progress for this file
+                                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                                    // Calculate overall progress
+                                    const overallProgress = ((totalUploaded + progress) / files.length);
+                                    uploadProgressBar.style.width = overallProgress + '%';
+                                },
+                                (error) => reject(error),
+                                () => resolve(uploadTask.snapshot)
+                            );
+                        });
+                        
+                        // Get download URL
+                        const downloadURL = await snapshot.ref.getDownloadURL();
+                        fileUrls.push(downloadURL);
+                        totalUploaded += 100; // File is 100% uploaded
+                    }
+                    
+                    // Get current user data
+                    if (!currentUserData) {
+                        currentUserData = await loadUserData(currentUser.uid);
+                    }
+                    
+                    // Create post in Firestore
+                    const postData = {
+                        userId: currentUser.uid,
+                        userName: currentUserData?.username || currentUser.displayName || 'User',
+                        userAvatar: currentUserData?.profilePicture || currentUser.photoURL || getDefaultAvatar(currentUserData?.username || currentUser.email),
+                        caption: caption,
+                        hashtags: hashtags.split(',').map(tag => tag.trim()).filter(tag => tag && tag.startsWith('#')),
+                        category: category,
+                        mediaType: mediaType,
+                        mediaUrls: fileUrls,
+                        likes: [],
+                        comments: [],
+                        shares: 0,
+                        views: 0,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    
+                    await db.collection('posts').add(postData);
+                    
+                    // Update user's post count
+                    await db.collection('users').doc(currentUser.uid).update({
+                        posts: firebase.firestore.FieldValue.increment(1),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
+                    
+                    // Update current user data
+                    if (currentUserData) {
+                        currentUserData.posts = (currentUserData.posts || 0) + 1;
+                    }
+                    
+                    // Success
+                    alert('Media uploaded successfully!');
+                    uploadModal.style.display = 'none';
+                    resetUploadForm();
+                    
+                    // Reload posts
+                    loadPageContent();
+                } catch (error) {
+                    console.error('Error uploading media: ', error);
+                    alert('Error uploading media: ' + error.message);
+                } finally {
+                    isUploading = false;
+                    submitUploadBtn.disabled = false;
+                    submitUploadBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload Media';
+                    uploadProgress.style.display = 'none';
+                }
             });
             
             // Submit comment
-            submitComment.addEventListener('click', () => {
+            submitComment.addEventListener('click', async () => {
                 if (!currentUser) {
                     showAuthModal();
                     return;
@@ -2038,31 +2158,34 @@
                 
                 if (!currentPostForComments) return;
                 
-                loadUserData(currentUser.uid).then(userData => {
+                try {
+                    // Get current user data
+                    if (!currentUserData) {
+                        currentUserData = await loadUserData(currentUser.uid);
+                    }
+                    
                     const commentData = {
                         userId: currentUser.uid,
-                        userName: userData.username || currentUser.displayName || 'User',
-                        userAvatar: userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || currentUser.email)}&background=ff0033&color=fff`,
+                        userName: currentUserData?.username || currentUser.displayName || 'User',
+                        userAvatar: currentUserData?.profilePicture || currentUser.photoURL || getDefaultAvatar(currentUserData?.username || currentUser.email),
                         text: commentText,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     
                     // Add comment to post
-                    return db.collection('posts').doc(currentPostForComments.id).update({
+                    await db.collection('posts').doc(currentPostForComments.id).update({
                         comments: firebase.firestore.FieldValue.arrayUnion(commentData)
                     });
-                })
-                .then(() => {
+                    
                     // Clear input
                     commentInput.value = '';
                     
                     // Reload comments
                     loadComments(currentPostForComments.id);
-                })
-                .catch((error) => {
+                } catch (error) {
                     console.error('Error adding comment: ', error);
-                    alert('Error adding comment');
-                });
+                    alert('Error adding comment: ' + error.message);
+                }
             });
             
             // Enter key for comment
@@ -2076,6 +2199,7 @@
             window.addEventListener('click', (e) => {
                 if (e.target === uploadModal) {
                     uploadModal.style.display = 'none';
+                    resetUploadForm();
                 }
                 if (e.target === authContainer) {
                     hideAuthModal();
@@ -2087,60 +2211,23 @@
                     editProfileModal.style.display = 'none';
                 }
             });
-            
-            // Keyboard shortcuts
-            document.addEventListener('keydown', (e) => {
-                // Space to pause/play video
-                if (e.code === 'Space' && currentPage === 'home') {
-                    e.preventDefault();
-                    const videos = document.querySelectorAll('.video-player');
-                    videos.forEach(video => {
-                        const rect = video.getBoundingClientRect();
-                        if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
-                            if (video.paused) {
-                                video.play();
-                            } else {
-                                video.pause();
-                            }
-                        }
-                    });
-                }
-                
-                // Arrow keys for carousel navigation
-                if (carouselSlides.length > 0) {
-                    if (e.key === 'ArrowLeft') {
-                        prevCarouselSlide();
-                    } else if (e.key === 'ArrowRight') {
-                        nextCarouselSlide();
-                    }
-                }
-            });
         }
 
-        // Load user data
-        function loadUserData(userId) {
-            return db.collection('users').doc(userId).get()
-                .then(doc => {
-                    if (doc.exists) {
-                        return doc.data();
-                    } else {
-                        // Create default user data if doesn't exist
-                        const defaultData = {
-                            uid: userId,
-                            username: currentUser.displayName || currentUser.email.split('@')[0] || 'User',
-                            email: currentUser.email,
-                            bio: 'Welcome to ZeroDay Feed!',
-                            profilePicture: currentUser.photoURL || null,
-                            followers: [],
-                            following: [],
-                            posts: 0,
-                            likes: []
-                        };
-                        
-                        return db.collection('users').doc(userId).set(defaultData)
-                            .then(() => defaultData);
-                    }
-                });
+        // Reset upload form
+        function resetUploadForm() {
+            uploadForm.reset();
+            mediaPreview.style.display = 'none';
+            videoPreview.style.display = 'none';
+            multipleFilesPreview.style.display = 'none';
+            multipleFilesPreview.innerHTML = '';
+            singleFileUpload.style.display = 'block';
+            multipleFilesUpload.style.display = 'none';
+            mediaTypeSelect.value = 'video';
+            uploadProgress.style.display = 'none';
+            uploadProgressBar.style.width = '0%';
+            isUploading = false;
+            submitUploadBtn.disabled = false;
+            submitUploadBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload Media';
         }
 
         // Show/hide loader
@@ -2244,49 +2331,48 @@
         }
 
         // Load home posts
-        function loadHomePosts() {
+        async function loadHomePosts() {
             showLoader();
             homeFeed.innerHTML = '';
             
-            let query = db.collection('posts')
-                .orderBy('timestamp', 'desc');
-            
-            // Filter by category if not "all"
-            if (currentCategory !== 'all') {
-                query = query.where('category', '==', currentCategory);
-            }
-            
-            query.limit(20)
-                .get()
-                .then((querySnapshot) => {
-                    if (querySnapshot.empty) {
-                        document.getElementById('noPostsMessage').style.display = 'block';
-                        homeFeed.innerHTML = '';
-                        hideLoader();
-                        return;
-                    }
-                    
-                    document.getElementById('noPostsMessage').style.display = 'none';
-                    posts = [];
-                    
-                    querySnapshot.forEach((doc) => {
-                        const post = doc.data();
-                        post.id = doc.id;
-                        posts.push(post);
-                        createPostElement(post, homeFeed);
-                    });
-                    
-                    hideLoader();
-                    
-                    // Setup video autoplay
-                    setupVideoAutoplay();
-                })
-                .catch((error) => {
-                    console.error("Error loading posts: ", error);
+            try {
+                let query = db.collection('posts')
+                    .orderBy('timestamp', 'desc');
+                
+                // Filter by category if not "all"
+                if (currentCategory !== 'all') {
+                    query = query.where('category', '==', currentCategory);
+                }
+                
+                const querySnapshot = await query.limit(20).get();
+                
+                if (querySnapshot.empty) {
                     document.getElementById('noPostsMessage').style.display = 'block';
                     homeFeed.innerHTML = '';
                     hideLoader();
+                    return;
+                }
+                
+                document.getElementById('noPostsMessage').style.display = 'none';
+                posts = [];
+                
+                querySnapshot.forEach((doc) => {
+                    const post = doc.data();
+                    post.id = doc.id;
+                    posts.push(post);
+                    createPostElement(post, homeFeed);
                 });
+                
+                hideLoader();
+                
+                // Setup video autoplay
+                setupVideoAutoplay();
+            } catch (error) {
+                console.error("Error loading posts: ", error);
+                document.getElementById('noPostsMessage').style.display = 'block';
+                homeFeed.innerHTML = '';
+                hideLoader();
+            }
         }
 
         // Create post element for home feed
@@ -2314,15 +2400,14 @@
                         <i class="fas fa-video"></i> Video
                     </div>
                 `;
-            } else if (post.mediaType === 'multiple-images') {
+            } else if (post.mediaType === 'multiple-images' && post.mediaUrls.length > 1) {
                 mediaContent = `
                     <div class="carousel-container" id="carousel-${post.id}">
                         ${post.mediaUrls.map((url, index) => `
                             <div class="carousel-slide ${index === 0 ? 'active' : ''}">
-                                <img src="${url}" alt="Image ${index + 1}">
+                                <img src="${url}" alt="Image ${index + 1}" loading="lazy">
                             </div>
                         `).join('')}
-                        ${post.mediaUrls.length > 1 ? `
                         <div class="carousel-nav">
                             <button class="carousel-nav-btn" onclick="prevCarouselSlide('${post.id}')">
                                 <i class="fas fa-chevron-left"></i>
@@ -2336,7 +2421,6 @@
                                 <div class="carousel-dot ${index === 0 ? 'active' : ''}" onclick="goToCarouselSlide('${post.id}', ${index})"></div>
                             `).join('')}
                         </div>
-                        ` : ''}
                     </div>
                     <div class="media-type-badge">
                         <i class="fas fa-images"></i> ${post.mediaUrls.length} Photos
@@ -2345,7 +2429,7 @@
             } else {
                 // Single image
                 mediaContent = `
-                    <img src="${post.mediaUrls[0]}" class="image-post" alt="Post image">
+                    <img src="${post.mediaUrls[0]}" class="image-post" alt="Post image" loading="lazy">
                     <div class="media-type-badge">
                         <i class="fas fa-image"></i> Photo
                     </div>
@@ -2388,68 +2472,6 @@
             `;
             
             container.appendChild(postElement);
-            
-            // Setup carousel if multiple images
-            if (post.mediaType === 'multiple-images') {
-                setupCarousel(post.id, post.mediaUrls.length);
-            }
-        }
-
-        // Setup carousel for multiple images
-        function setupCarousel(postId, totalSlides) {
-            const carouselContainer = document.getElementById(`carousel-${postId}`);
-            if (!carouselContainer) return;
-            
-            // Add touch/swipe support
-            let startX = 0;
-            let endX = 0;
-            
-            carouselContainer.addEventListener('touchstart', (e) => {
-                startX = e.touches[0].clientX;
-            });
-            
-            carouselContainer.addEventListener('touchend', (e) => {
-                endX = e.changedTouches[0].clientX;
-                handleCarouselSwipe(postId, startX, endX);
-            });
-            
-            // Mouse drag support
-            let mouseDown = false;
-            let mouseStartX = 0;
-            let mouseEndX = 0;
-            
-            carouselContainer.addEventListener('mousedown', (e) => {
-                mouseDown = true;
-                mouseStartX = e.clientX;
-            });
-            
-            carouselContainer.addEventListener('mouseup', (e) => {
-                if (mouseDown) {
-                    mouseDown = false;
-                    mouseEndX = e.clientX;
-                    handleCarouselSwipe(postId, mouseStartX, mouseEndX);
-                }
-            });
-            
-            carouselContainer.addEventListener('mouseleave', () => {
-                mouseDown = false;
-            });
-        }
-
-        // Handle carousel swipe
-        function handleCarouselSwipe(postId, startX, endX) {
-            const threshold = 50; // Minimum swipe distance
-            const diff = startX - endX;
-            
-            if (Math.abs(diff) > threshold) {
-                if (diff > 0) {
-                    // Swipe left - next slide
-                    nextCarouselSlide(postId);
-                } else {
-                    // Swipe right - previous slide
-                    prevCarouselSlide(postId);
-                }
-            }
         }
 
         // Carousel navigation functions
@@ -2524,38 +2546,38 @@
         };
 
         // Load explore posts
-        function loadExplorePosts() {
+        async function loadExplorePosts() {
             showLoader();
             exploreGrid.innerHTML = '';
             
-            db.collection('posts')
-                .orderBy('timestamp', 'desc')
-                .limit(30)
-                .get()
-                .then((querySnapshot) => {
-                    if (querySnapshot.empty) {
-                        document.getElementById('noExplorePosts').style.display = 'block';
-                        exploreGrid.innerHTML = '';
-                        hideLoader();
-                        return;
-                    }
-                    
-                    document.getElementById('noExplorePosts').style.display = 'none';
-                    
-                    querySnapshot.forEach((doc) => {
-                        const post = doc.data();
-                        post.id = doc.id;
-                        createExplorePostElement(post);
-                    });
-                    
-                    hideLoader();
-                })
-                .catch((error) => {
-                    console.error("Error loading explore posts: ", error);
+            try {
+                const querySnapshot = await db.collection('posts')
+                    .orderBy('timestamp', 'desc')
+                    .limit(30)
+                    .get();
+                
+                if (querySnapshot.empty) {
                     document.getElementById('noExplorePosts').style.display = 'block';
                     exploreGrid.innerHTML = '';
                     hideLoader();
+                    return;
+                }
+                
+                document.getElementById('noExplorePosts').style.display = 'none';
+                
+                querySnapshot.forEach((doc) => {
+                    const post = doc.data();
+                    post.id = doc.id;
+                    createExplorePostElement(post);
                 });
+                
+                hideLoader();
+            } catch (error) {
+                console.error("Error loading explore posts: ", error);
+                document.getElementById('noExplorePosts').style.display = 'block';
+                exploreGrid.innerHTML = '';
+                hideLoader();
+            }
         }
 
         // Create explore post element
@@ -2568,7 +2590,7 @@
             if (post.mediaType === 'video') {
                 mediaContent = `<video loop muted playsinline><source src="${post.mediaUrls[0]}" type="video/mp4"></video>`;
             } else {
-                mediaContent = `<img src="${post.mediaUrls[0]}" alt="Post image">`;
+                mediaContent = `<img src="${post.mediaUrls[0]}" alt="Post image" loading="lazy">`;
             }
             
             postElement.innerHTML = `
@@ -2616,7 +2638,7 @@
         }
 
         // Load profile data
-        function loadProfileData() {
+        async function loadProfileData() {
             if (!currentUser) {
                 showAuthModal();
                 return;
@@ -2624,52 +2646,62 @@
             
             showLoader();
             
-            // Get user data
-            db.collection('users').doc(currentUser.uid).get()
-                .then((doc) => {
-                    if (doc.exists) {
-                        const userData = doc.data();
-                        document.getElementById('profileName').textContent = userData.username || 'User';
-                        document.getElementById('profileBio').textContent = userData.bio || 'Welcome to ZeroDay Feed!';
-                        document.getElementById('postCount').textContent = userData.posts || 0;
-                        document.getElementById('followerCount').textContent = userData.followers ? userData.followers.length : 0;
-                        document.getElementById('followingCount').textContent = userData.following ? userData.following.length : 0;
-                        
-                        // Set profile avatar
-                        const profileAvatar = document.getElementById('profileAvatar');
-                        profileAvatar.src = userData.profilePicture || currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username || 'User')}&background=ff0033&color=fff`;
-                    }
+            try {
+                // Get user data
+                const userDoc = await db.collection('users').doc(currentUser.uid).get();
+                
+                if (userDoc.exists) {
+                    currentUserData = userDoc.data();
+                    document.getElementById('profileName').textContent = currentUserData.username || 'User';
+                    document.getElementById('profileBio').textContent = currentUserData.bio || 'Welcome to ZeroDay Feed!';
+                    document.getElementById('postCount').textContent = currentUserData.posts || 0;
+                    document.getElementById('followerCount').textContent = currentUserData.followers ? currentUserData.followers.length : 0;
+                    document.getElementById('followingCount').textContent = currentUserData.following ? currentUserData.following.length : 0;
                     
-                    // Load user posts
-                    return db.collection('posts')
-                        .where('userId', '==', currentUser.uid)
-                        .orderBy('timestamp', 'desc')
-                        .get();
-                })
-                .then((querySnapshot) => {
-                    const userPosts = document.getElementById('userPosts');
-                    userPosts.innerHTML = '';
+                    // Set profile avatar
+                    const profileAvatar = document.getElementById('profileAvatar');
+                    profileAvatar.src = currentUserData.profilePicture || currentUser.photoURL || getDefaultAvatar(currentUserData.username || currentUser.email);
+                } else {
+                    // Create user data if it doesn't exist
+                    currentUserData = await createUserData(currentUser);
+                    document.getElementById('profileName').textContent = currentUser.displayName || currentUser.email.split('@')[0] || 'User';
+                    document.getElementById('profileBio').textContent = 'Welcome to ZeroDay Feed!';
+                    document.getElementById('postCount').textContent = 0;
+                    document.getElementById('followerCount').textContent = 0;
+                    document.getElementById('followingCount').textContent = 0;
                     
-                    if (querySnapshot.empty) {
-                        document.getElementById('noUserPosts').style.display = 'block';
-                        hideLoader();
-                        return;
-                    }
-                    
-                    document.getElementById('noUserPosts').style.display = 'none';
-                    
-                    querySnapshot.forEach((doc) => {
-                        const post = doc.data();
-                        post.id = doc.id;
-                        createProfilePostElement(post, userPosts);
-                    });
-                    
+                    const profileAvatar = document.getElementById('profileAvatar');
+                    profileAvatar.src = currentUser.photoURL || getDefaultAvatar(currentUser.email);
+                }
+                
+                // Load user posts
+                const querySnapshot = await db.collection('posts')
+                    .where('userId', '==', currentUser.uid)
+                    .orderBy('timestamp', 'desc')
+                    .get();
+                
+                const userPosts = document.getElementById('userPosts');
+                userPosts.innerHTML = '';
+                
+                if (querySnapshot.empty) {
+                    document.getElementById('noUserPosts').style.display = 'block';
                     hideLoader();
-                })
-                .catch((error) => {
-                    console.error("Error loading profile: ", error);
-                    hideLoader();
+                    return;
+                }
+                
+                document.getElementById('noUserPosts').style.display = 'none';
+                
+                querySnapshot.forEach((doc) => {
+                    const post = doc.data();
+                    post.id = doc.id;
+                    createProfilePostElement(post, userPosts);
                 });
+                
+                hideLoader();
+            } catch (error) {
+                console.error("Error loading profile: ", error);
+                hideLoader();
+            }
         }
 
         // Create profile post element
@@ -2694,15 +2726,14 @@
                         <i class="fas fa-video"></i> Video
                     </div>
                 `;
-            } else if (post.mediaType === 'multiple-images') {
+            } else if (post.mediaType === 'multiple-images' && post.mediaUrls.length > 1) {
                 mediaContent = `
                     <div class="carousel-container" id="profile-carousel-${post.id}">
                         ${post.mediaUrls.map((url, index) => `
                             <div class="carousel-slide ${index === 0 ? 'active' : ''}">
-                                <img src="${url}" alt="Image ${index + 1}">
+                                <img src="${url}" alt="Image ${index + 1}" loading="lazy">
                             </div>
                         `).join('')}
-                        ${post.mediaUrls.length > 1 ? `
                         <div class="carousel-nav">
                             <button class="carousel-nav-btn" onclick="prevCarouselSlide('profile-carousel-${post.id}')">
                                 <i class="fas fa-chevron-left"></i>
@@ -2716,7 +2747,6 @@
                                 <div class="carousel-dot ${index === 0 ? 'active' : ''}" onclick="goToCarouselSlide('profile-carousel-${post.id}', ${index})"></div>
                             `).join('')}
                         </div>
-                        ` : ''}
                     </div>
                     <div class="media-type-badge">
                         <i class="fas fa-images"></i> ${post.mediaUrls.length} Photos
@@ -2725,7 +2755,7 @@
             } else {
                 // Single image
                 mediaContent = `
-                    <img src="${post.mediaUrls[0]}" class="image-post" alt="Post image">
+                    <img src="${post.mediaUrls[0]}" class="image-post" alt="Post image" loading="lazy">
                     <div class="media-type-badge">
                         <i class="fas fa-image"></i> Photo
                     </div>
@@ -2757,11 +2787,6 @@
             `;
             
             container.appendChild(postElement);
-            
-            // Setup carousel if multiple images
-            if (post.mediaType === 'multiple-images') {
-                setupCarousel(`profile-carousel-${post.id}`, post.mediaUrls.length);
-            }
         }
 
         // Load messages
@@ -2842,7 +2867,7 @@
         }
 
         // Like a post
-        function likePost(postId) {
+        async function likePost(postId) {
             if (!currentUser) {
                 showAuthModal();
                 return;
@@ -2872,12 +2897,13 @@
             likeCount.textContent = post.likes ? post.likes.length : 0;
             
             // Update in database
-            db.collection('posts').doc(postId).update({
-                likes: post.likes || []
-            })
-            .catch((error) => {
+            try {
+                await db.collection('posts').doc(postId).update({
+                    likes: post.likes || []
+                });
+            } catch (error) {
                 console.error("Error updating likes: ", error);
-            });
+            }
         }
 
         // Like current post (for action sidebar)
@@ -2895,7 +2921,7 @@
         }
 
         // Open comments
-        function openComments(postId) {
+        async function openComments(postId) {
             if (!currentUser) {
                 showAuthModal();
                 return;
@@ -2906,7 +2932,7 @@
             
             currentPostForComments = post;
             commentsModal.style.display = 'flex';
-            loadComments(postId);
+            await loadComments(postId);
         }
 
         // Comment on post (for action sidebar)
@@ -2924,54 +2950,53 @@
         }
 
         // Load comments
-        function loadComments(postId) {
+        async function loadComments(postId) {
             commentsList.innerHTML = '';
             
-            db.collection('posts').doc(postId).get()
-                .then((doc) => {
-                    if (doc.exists) {
-                        const post = doc.data();
-                        const comments = post.comments || [];
-                        
-                        if (comments.length === 0) {
-                            commentsList.innerHTML = '<p style="text-align: center; color: #666; margin-top: 40px;">No comments yet. Be the first to comment!</p>';
-                            return;
-                        }
-                        
-                        // Sort comments by timestamp (newest first)
-                        comments.sort((a, b) => {
-                            const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date();
-                            const timeB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date();
-                            return timeB - timeA;
-                        });
-                        
-                        // Display comments
-                        comments.forEach(comment => {
-                            const commentDate = comment.timestamp?.toDate ? comment.timestamp.toDate() : new Date();
-                            const dateString = formatDate(commentDate);
-                            
-                            const commentElement = document.createElement('div');
-                            commentElement.className = 'comment-item';
-                            commentElement.innerHTML = `
-                                <img src="${comment.userAvatar}" alt="${comment.userName}" class="comment-avatar">
-                                <div class="comment-content">
-                                    <div class="comment-author">${comment.userName}</div>
-                                    <div class="comment-text">${comment.text}</div>
-                                    <div class="comment-time">${dateString}</div>
-                                </div>
-                            `;
-                            
-                            commentsList.appendChild(commentElement);
-                        });
+            try {
+                const doc = await db.collection('posts').doc(postId).get();
+                if (doc.exists) {
+                    const post = doc.data();
+                    const comments = post.comments || [];
+                    
+                    if (comments.length === 0) {
+                        commentsList.innerHTML = '<p style="text-align: center; color: #666; margin-top: 40px;">No comments yet. Be the first to comment!</p>';
+                        return;
                     }
-                })
-                .catch((error) => {
-                    console.error("Error loading comments: ", error);
-                });
+                    
+                    // Sort comments by timestamp (newest first)
+                    comments.sort((a, b) => {
+                        const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date();
+                        const timeB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date();
+                        return timeB - timeA;
+                    });
+                    
+                    // Display comments
+                    comments.forEach(comment => {
+                        const commentDate = comment.timestamp?.toDate ? comment.timestamp.toDate() : new Date();
+                        const dateString = formatDate(commentDate);
+                        
+                        const commentElement = document.createElement('div');
+                        commentElement.className = 'comment-item';
+                        commentElement.innerHTML = `
+                            <img src="${comment.userAvatar}" alt="${comment.userName}" class="comment-avatar">
+                            <div class="comment-content">
+                                <div class="comment-author">${comment.userName}</div>
+                                <div class="comment-text">${comment.text}</div>
+                                <div class="comment-time">${dateString}</div>
+                            </div>
+                        `;
+                        
+                        commentsList.appendChild(commentElement);
+                    });
+                }
+            } catch (error) {
+                console.error("Error loading comments: ", error);
+            }
         }
 
         // Share post
-        function sharePost(postId) {
+        async function sharePost(postId) {
             if (!currentUser) {
                 showAuthModal();
                 return;
@@ -2983,11 +3008,12 @@
             // Update share count
             const newShares = (post.shares || 0) + 1;
             
-            // Update in database
-            db.collection('posts').doc(postId).update({
-                shares: newShares
-            })
-            .then(() => {
+            try {
+                // Update in database
+                await db.collection('posts').doc(postId).update({
+                    shares: newShares
+                });
+                
                 // Update UI
                 const shareCount = document.querySelector(`#post-${postId} .stat-count`);
                 if (shareCount) {
@@ -2999,26 +3025,20 @@
                 
                 // Try to use Web Share API if available
                 if (navigator.share) {
-                    navigator.share({
+                    await navigator.share({
                         title: `Check out this post on ZeroDay Feed by ${post.userName}`,
                         text: post.caption,
                         url: shareUrl,
                     });
                 } else {
                     // Fallback to clipboard
-                    navigator.clipboard.writeText(shareUrl)
-                        .then(() => {
-                            alert('Link copied to clipboard!');
-                        })
-                        .catch(() => {
-                            // Last resort: show URL
-                            prompt('Copy this link to share:', shareUrl);
-                        });
+                    await navigator.clipboard.writeText(shareUrl);
+                    alert('Link copied to clipboard!');
                 }
-            })
-            .catch((error) => {
-                console.error("Error updating shares: ", error);
-            });
+            } catch (error) {
+                console.error("Error sharing post: ", error);
+                alert('Error sharing post: ' + error.message);
+            }
         }
 
         // Share current post (for action sidebar)
@@ -3062,7 +3082,7 @@
                 if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
                     const postId = card.id.replace('post-', '');
                     const post = posts.find(p => p.id === postId);
-                    if (post && post.userId !== currentUser.uid) {
+                    if (post && post.userId !== currentUser?.uid) {
                         alert(`Follow feature coming soon! Would follow ${post.userName}`);
                     }
                     break;
